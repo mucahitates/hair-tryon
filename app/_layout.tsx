@@ -3,6 +3,7 @@
 // KRİTİK: useRef ile initialize sadece bir kez çalışır
 // Stack navigator burada tanımlanır
 // fonts ve global ayarlar burada yüklenir
+// Gesture handler ve screens — en üstte olmalı, diğer import'lardan önce
 
 import { useEffect, useRef } from 'react';
 import { Stack } from 'expo-router';
@@ -11,6 +12,7 @@ import { auth } from '../src/services/firebase';
 import { useAuthStore } from '../src/stores/authStore';
 import { getUser } from '../src/services/userService';
 import { COLORS } from '../src/constants/theme';
+
 
 export default function RootLayout() {
   // KRİTİK: initialized ref ile useEffect sadece bir kez çalışır

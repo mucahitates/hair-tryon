@@ -8,18 +8,18 @@ export const COLORS = {
   primaryLight: '#FF8FAD',
   primaryPale: '#FFB3C8',
 
-  // Arka planlar
-  background: '#231014',
-  cardBackground: '#2E1A1A',
-  elevatedCard: '#3D2424',
+  // Arka planlar — daha açık tonlar
+  background: '#3D1A24',
+  cardBackground: '#4D2530',
+  elevatedCard: '#5E2E3A',
 
   // Kenarlık
-  border: '#5E4545',
+  border: '#7A4555',
 
   // Metinler
   textPrimary: '#FFF1F7',
-  textSecondary: '#C4A0AC',
-  textMuted: '#8C6670',
+  textSecondary: '#D4B0BC',
+  textMuted: '#A87888',
 
   // Genel
   white: '#FFFFFF',
