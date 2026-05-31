@@ -21,6 +21,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'react-native';
 
 const { width } = Dimensions.get('window');
 
@@ -234,16 +236,35 @@ function EditProfileModal({ visible, onClose, user }: {
 }) {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [phone, setPhone] = useState(user?.phone || '');
-
+  const [avatarUri, setAvatarUri] = useState<string | null>(null);
   return (
     <BottomModal visible={visible} onClose={onClose} title="Profili Düzenle"
       showSave onSave={() => { onClose(); }} saveLabel="Kaydet"
     >
       <View style={editStyles.content}>
-        <TouchableOpacity style={editStyles.avatarSection}>
-          <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={editStyles.avatar}>
-            <Text style={editStyles.avatarText}>{user?.displayName?.[0]?.toUpperCase() || '👤'}</Text>
-          </LinearGradient>
+        <TouchableOpacity style={editStyles.avatarSection} onPress={async () => {
+          const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+          if (!permission.granted) {
+            Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor.');
+            return;
+          }
+          const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 0.8,
+          });
+          if (!result.canceled && result.assets[0]) {
+            setAvatarUri(result.assets[0].uri);
+          }
+        }}>
+          {avatarUri ? (
+            <Image source={{ uri: avatarUri }} style={[editStyles.avatar, { borderRadius: 45 }]} />
+          ) : (
+            <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={editStyles.avatar}>
+              <Text style={editStyles.avatarText}>{user?.displayName?.[0]?.toUpperCase() || '👤'}</Text>
+            </LinearGradient>
+          )}
           <View style={editStyles.avatarEditBadge}>
             <Ionicons name="camera" size={14} color={COLORS.white} />
           </View>

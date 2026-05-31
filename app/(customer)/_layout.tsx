@@ -13,7 +13,7 @@ const THEME = {
   tabBackground: '#16213E',        // Koyu lacivert — arka plan ile uyumlu
   activeGlow: '#4EFFFF',           // Mor glow — primary renk
   textWhite: '#FFFFFF',
-  textMuted: '#8E8E93',
+  textMuted: '#ffffff',
   curveBorder: 'rgba(167, 139, 250, 0.3)', // Mor kenarlık
   aiButton: '#7C3AED',             // Koyu mor — primaryDark
 };
