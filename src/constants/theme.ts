@@ -1,31 +1,31 @@
 // Uygulamanın tüm renk ve tasarım sabitleri
-// Tüm ekranlar ve bileşenler renkleri buradan alır, hardcoded renk kullanılmaz
+// Glassmorphism tarzı — koyu arka plan, yarı saydam kartlar
 
 export const COLORS = {
-  // Ana renkler
-  primary: '#FF5C8A',
-  primaryDark: '#E8386D',
-  primaryLight: '#FF8FAD',
-  primaryPale: '#FFB3C8',
+  // Ana renkler — mor/pembe gradient tonu
+  primary: '#A78BFA',
+  primaryDark: '#7C3AED',
+  primaryLight: '#C4B5FD',
+  primaryPale: '#EDE9FE',
 
-  // Arka planlar — daha açık tonlar
-  background: '#3D1A24',
-  cardBackground: '#4D2530',
-  elevatedCard: '#5E2E3A',
+  // Arka planlar
+  background: '#0F0A1E',
+  cardBackground: 'rgba(255,255,255,0.08)',
+  elevatedCard: 'rgba(255,255,255,0.12)',
 
   // Kenarlık
-  border: '#7A4555',
+  border: 'rgba(255,255,255,0.15)',
 
   // Metinler
-  textPrimary: '#FFF1F7',
-  textSecondary: '#D4B0BC',
-  textMuted: '#A87888',
+  textPrimary: '#F5F3FF',
+  textSecondary: '#C4B5FD',
+  textMuted: '#7C6FA0',
 
   // Genel
   white: '#FFFFFF',
-  error: '#FF4444',
-  success: '#44FF88',
-  warning: '#FFB844',
+  error: '#F87171',
+  success: '#34D399',
+  warning: '#FBBF24',
 };
 
 export const FONTS = {

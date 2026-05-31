@@ -1,8 +1,7 @@
-// Login ekranı
-// - expo-linear-gradient ile animasyonlu arkaplan
-// - Input focus olunca border rengi değişir
-// - Giriş başarılıysa fade-out geçiş animasyonu
-// - Logo spring animasyonu, form slide+fade animasyonu
+// Login ekranı — Glassmorphism tasarım
+// Gradient arka plan + yarı saydam kartlar
+// Input focus gold border animasyonu
+// Giriş başarılıysa fade-out geçiş
 
 import { useState, useEffect, useRef } from 'react';
 import {
@@ -22,36 +21,28 @@ import { useRouter } from 'expo-router';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../../src/services/firebase';
-import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import { useAuthStore } from '../../src/stores/authStore';
 import { getUser } from '../../src/services/userService';
+import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
-
-const { height } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
 export default function LoginScreen() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [emailFocused, setEmailFocused] = useState(false);
-  const [passwordFocused, setPasswordFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
-  // Animasyon değerleri
   const fadeAnim = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(40)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
   const logoScale = useRef(new Animated.Value(0.5)).current;
   const screenOpacity = useRef(new Animated.Value(1)).current;
 
-  // Gradient animasyonu için renk pozisyonu
-  const gradientAnim = useRef(new Animated.Value(0)).current;
-
-  // Input focus animasyonları
-  const emailBorderAnim = useRef(new Animated.Value(0)).current;
-  const passwordBorderAnim = useRef(new Animated.Value(0)).current;
+  const emailBorder = useRef(new Animated.Value(0)).current;
+  const passwordBorder = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    // Ekran açılınca sıralı animasyon
     Animated.sequence([
       Animated.spring(logoScale, {
         toValue: 1,
@@ -62,88 +53,31 @@ export default function LoginScreen() {
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 400,
+          duration: 500,
           useNativeDriver: false,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
-          duration: 400,
+          duration: 500,
           useNativeDriver: false,
         }),
       ]),
     ]).start();
-
-    // Arkaplan gradient sürekli döngü animasyonu
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(gradientAnim, {
-          toValue: 1,
-          duration: 4000,
-          useNativeDriver: false,
-        }),
-        Animated.timing(gradientAnim, {
-          toValue: 0,
-          duration: 4000,
-          useNativeDriver: false,
-        }),
-      ])
-    ).start();
   }, []);
 
-  // Email input focus animasyonu
-  const handleEmailFocus = () => {
-    setEmailFocused(true);
-    Animated.timing(emailBorderAnim, {
-      toValue: 1,
+  const animateBorder = (anim: Animated.Value, focused: boolean) => {
+    Animated.timing(anim, {
+      toValue: focused ? 1 : 0,
       duration: 200,
       useNativeDriver: false,
     }).start();
   };
 
-  const handleEmailBlur = () => {
-    setEmailFocused(false);
-    Animated.timing(emailBorderAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  // Password input focus animasyonu
-  const handlePasswordFocus = () => {
-    setPasswordFocused(true);
-    Animated.timing(passwordBorderAnim, {
-      toValue: 1,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const handlePasswordBlur = () => {
-    setPasswordFocused(false);
-    Animated.timing(passwordBorderAnim, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  // Input border rengi interpolasyonu
-  const emailBorderColor = emailBorderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [COLORS.border, '#D4A017'],
-  });
-
-  const passwordBorderColor = passwordBorderAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [COLORS.border, '#D4A017'],
-  });
-
-  // Gradient renk interpolasyonu
-  const gradientColor = gradientAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [COLORS.background, COLORS.elevatedCard],
-  });
+  const getBorderColor = (anim: Animated.Value) =>
+    anim.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['rgba(255,255,255,0.2)', '#D4A017'],
+    });
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -153,8 +87,6 @@ export default function LoginScreen() {
     setIsLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
-
-      // Giriş başarılı — kullanıcıyı Firestore'dan çek ve yönlendir
       const user = await getUser(credential.user.uid);
       if (user) {
         useAuthStore.setState({
@@ -163,51 +95,38 @@ export default function LoginScreen() {
           isAuthenticated: true,
           isLoading: false,
         });
-        // Fade-out animasyonu
         Animated.timing(screenOpacity, {
           toValue: 0,
           duration: 400,
           useNativeDriver: false,
         }).start(() => {
-          if (user.role === 'customer') {
-            router.replace('/(customer)');
-          } else if (user.role === 'hairdresser') {
-            router.replace('/(hairdresser)');
-          }
+          if (user.role === 'customer') router.replace('/(customer)');
+          else if (user.role === 'hairdresser') router.replace('/(hairdresser)');
         });
       } else {
         Alert.alert('Hata', 'Kullanıcı bilgileri bulunamadı');
       }
     } catch (error: any) {
-      const message =
-        error.code === 'auth/user-not-found' ? 'Kullanıcı bulunamadı' :
-          error.code === 'auth/wrong-password' ? 'Şifre hatalı' :
-            error.code === 'auth/invalid-email' ? 'Geçersiz email' :
-              error.code === 'auth/invalid-credential' ? 'Email veya şifre hatalı' :
-                'Giriş yapılamadı';
-      Alert.alert('Hata', message);
+      Alert.alert('Hata', 'Email veya şifre hatalı');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleGoogle = () => {
-    Alert.alert('Bilgi', 'Google ile giriş yakında aktif edilecek');
-  };
-
-  const handleGithub = () => {
-    Alert.alert('Yakında', 'Yakında aktif olacak');
-  };
-
   return (
     <Animated.View style={[styles.wrapper, { opacity: screenOpacity }]}>
-      {/* Animasyonlu arkaplan gradient */}
+      {/* Gradient arka plan */}
       <LinearGradient
-        colors={[COLORS.background, COLORS.elevatedCard, COLORS.background]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
+        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
+        start={{ x: 0.2, y: 0 }}
+        end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
+
+      {/* Dekoratif renkli daireler */}
+      <View style={styles.orb1} />
+      <View style={styles.orb2} />
+      <View style={styles.orb3} />
 
       <KeyboardAvoidingView
         style={styles.container}
@@ -215,50 +134,63 @@ export default function LoginScreen() {
       >
         <View style={styles.inner}>
 
-          {/* Logo animasyonu */}
+          {/* Logo */}
           <Animated.View style={[styles.header, { transform: [{ scale: logoScale }] }]}>
-            <View style={styles.iconContainer}>
+            <LinearGradient
+              colors={[COLORS.primaryDark, COLORS.primary]}
+              style={styles.iconContainer}
+            >
               <Text style={styles.iconEmoji}>✂️</Text>
-            </View>
+            </LinearGradient>
             <Text style={styles.title}>Hair Tryon</Text>
             <Text style={styles.subtitle}>Hesabına giriş yap</Text>
           </Animated.View>
 
-          {/* Form animasyonu */}
+          {/* Form */}
           <Animated.View style={{
             opacity: fadeAnim,
             transform: [{ translateY: slideAnim }],
           }}>
 
             <View style={styles.form}>
-              {/* Email input — focus animasyonlu border */}
-              <Animated.View style={[styles.inputWrapper, { borderColor: emailBorderColor }]}>
+              {/* Email */}
+              <Animated.View style={[styles.inputWrapper, { borderColor: getBorderColor(emailBorder) }]}>
                 <TextInput
                   style={styles.input}
                   placeholder="Email"
-                  placeholderTextColor={COLORS.textMuted}
+                  placeholderTextColor="rgba(255,255,255,0.35)"
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
                   autoCapitalize="none"
-                  onFocus={handleEmailFocus}
-                  onBlur={handleEmailBlur}
+                  onFocus={() => animateBorder(emailBorder, true)}
+                  onBlur={() => animateBorder(emailBorder, false)}
                 />
               </Animated.View>
 
-              {/* Şifre input — focus animasyonlu border */}
-              <Animated.View style={[styles.inputWrapper, { borderColor: passwordBorderColor }]}>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Şifre"
-                  placeholderTextColor={COLORS.textMuted}
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry
-                  onFocus={handlePasswordFocus}
-                  onBlur={handlePasswordBlur}
-                />
+              {/* Şifre */}
+              <Animated.View style={[styles.inputWrapper, { borderColor: getBorderColor(passwordBorder) }]}>
+                <View style={styles.inputRow}>
+                  <TextInput
+                    style={[styles.input, { flex: 1 }]}
+                    placeholder="Şifre"
+                    placeholderTextColor="rgba(255,255,255,0.35)"
+                    value={password}
+                    onChangeText={setPassword}
+                    secureTextEntry={!showPassword}
+                    textContentType="oneTimeCode"
+                    onFocus={() => animateBorder(passwordBorder, true)}
+                    onBlur={() => animateBorder(passwordBorder, false)}
+                  />
+                  <TouchableOpacity
+                    style={styles.eyeButton}
+                    onPress={() => setShowPassword(!showPassword)}
+                  >
+                    <Text style={styles.eyeText}>{showPassword ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
+                </View>
               </Animated.View>
+
               {/* Şifremi unuttum */}
               <TouchableOpacity
                 style={styles.forgotButton}
@@ -267,16 +199,24 @@ export default function LoginScreen() {
                 <Text style={styles.forgotText}>Şifremi Unuttum</Text>
               </TouchableOpacity>
 
+              {/* Giriş yap butonu */}
               <TouchableOpacity
-                style={[styles.button, isLoading && styles.buttonDisabled]}
                 onPress={handleLogin}
                 disabled={isLoading}
+                style={styles.buttonWrapper}
               >
-                {isLoading ? (
-                  <ActivityIndicator color={COLORS.white} />
-                ) : (
-                  <Text style={styles.buttonText}>Giriş Yap</Text>
-                )}
+                <LinearGradient
+                  colors={[COLORS.primary, COLORS.primaryDark]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={[styles.button, isLoading && styles.buttonDisabled]}
+                >
+                  {isLoading ? (
+                    <ActivityIndicator color={COLORS.white} />
+                  ) : (
+                    <Text style={styles.buttonText}>Giriş Yap</Text>
+                  )}
+                </LinearGradient>
               </TouchableOpacity>
             </View>
 
@@ -287,14 +227,20 @@ export default function LoginScreen() {
               <View style={styles.dividerLine} />
             </View>
 
-            {/* Sosyal giriş butonları */}
+            {/* Sosyal butonlar */}
             <View style={styles.socialButtons}>
-              <TouchableOpacity style={styles.socialButton} onPress={handleGoogle}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => Alert.alert('Bilgi', 'Google ile giriş yakında aktif edilecek')}
+              >
                 <Text style={styles.socialIcon}>G</Text>
                 <Text style={styles.socialText}>Google ile Giriş Yap</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.socialButton} onPress={handleGithub}>
+              <TouchableOpacity
+                style={styles.socialButton}
+                onPress={() => Alert.alert('Yakında', 'Yakında aktif olacak')}
+              >
                 <Text style={styles.socialIcon}>⌥</Text>
                 <Text style={styles.socialText}>Github ile Giriş Yap</Text>
               </TouchableOpacity>
@@ -318,6 +264,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   wrapper: {
     flex: 1,
+    backgroundColor: COLORS.background,
   },
   container: {
     flex: 1,
@@ -327,6 +274,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
   },
+  // Dekoratif daireler
+  orb1: {
+    position: 'absolute',
+    width: 250,
+    height: 250,
+    borderRadius: 125,
+    backgroundColor: '#7C3AED',
+    opacity: 0.25,
+    top: -50,
+    left: -80,
+  },
+  orb2: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    backgroundColor: '#A78BFA',
+    opacity: 0.15,
+    top: height * 0.3,
+    right: -60,
+  },
+  orb3: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    backgroundColor: '#6D28D9',
+    opacity: 0.2,
+    bottom: 80,
+    left: -40,
+  },
   header: {
     marginBottom: SPACING.xl,
     alignItems: 'center',
@@ -335,12 +313,14 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: RADIUS.xl,
-    backgroundColor: COLORS.cardBackground,
-    borderWidth: 2,
-    borderColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.md,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
   },
   iconEmoji: {
     fontSize: 36,
@@ -350,6 +330,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.primary,
     marginBottom: SPACING.xs,
+    letterSpacing: 0.5,
   },
   subtitle: {
     fontSize: FONTS.regular,
@@ -360,10 +341,14 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   inputWrapper: {
-    backgroundColor: COLORS.cardBackground,
-    borderWidth: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1.5,
     borderRadius: RADIUS.md,
     overflow: 'hidden',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   input: {
     paddingHorizontal: SPACING.md,
@@ -371,12 +356,30 @@ const styles = StyleSheet.create({
     color: COLORS.textPrimary,
     fontSize: FONTS.regular,
   },
-  button: {
-    backgroundColor: COLORS.primary,
+  eyeButton: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.md,
+  },
+  eyeText: {
+    fontSize: 18,
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: -SPACING.sm,
+  },
+  forgotText: {
+    color: COLORS.primary,
+    fontSize: FONTS.medium,
+  },
+  buttonWrapper: {
+    marginTop: SPACING.sm,
     borderRadius: RADIUS.md,
+    overflow: 'hidden',
+  },
+  button: {
     paddingVertical: SPACING.md,
     alignItems: 'center',
-    marginTop: SPACING.sm,
+    borderRadius: RADIUS.md,
   },
   buttonDisabled: {
     opacity: 0.6,
@@ -385,6 +388,7 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontSize: FONTS.regular,
     fontWeight: 'bold',
+    letterSpacing: 0.5,
   },
   dividerRow: {
     flexDirection: 'row',
@@ -394,7 +398,7 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: COLORS.border,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   dividerText: {
     color: COLORS.textMuted,
@@ -408,9 +412,9 @@ const styles = StyleSheet.create({
   socialButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cardBackground,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: 'rgba(255,255,255,0.15)',
     borderRadius: RADIUS.md,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
@@ -435,13 +439,5 @@ const styles = StyleSheet.create({
   registerLink: {
     color: COLORS.primary,
     fontWeight: 'bold',
-  },
-  forgotButton: {
-    alignSelf: 'flex-end',
-    marginTop: -SPACING.sm,
-  },
-  forgotText: {
-    color: COLORS.primary,
-    fontSize: FONTS.medium,
   },
 });
