@@ -1,3 +1,8 @@
+// Uygulamanın giriş noktası
+// Firebase auth durumuna göre yönlendirme yapar
+// KRİTİK: onAuthStateChanged null gelince direkt login'e yönlendir
+// 5 saniye timeout — çözümlenmezse login'e yönlendir
+
 import { useEffect, useRef } from 'react';
 import { View, ActivityIndicator, Text } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -11,18 +16,12 @@ export default function Index() {
   const resolved = useRef(false);
 
   useEffect(() => {
-    console.log('index.tsx useEffect başladı');
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      console.log('onAuthStateChanged tetiklendi:', firebaseUser?.uid ?? 'null');
-
       if (resolved.current) return;
 
       if (firebaseUser) {
         resolved.current = true;
-        console.log('Kullanıcı var, Firestore\'dan çekiliyor...');
         const user = await getUser(firebaseUser.uid);
-        console.log('Firestore kullanıcı:', user?.role ?? 'bulunamadı');
-
         if (user) {
           useAuthStore.setState({
             firebaseUser,
@@ -31,10 +30,8 @@ export default function Index() {
             isLoading: false,
           });
           if (user.role === 'customer') {
-            console.log('customer\'a yönlendiriliyor');
             router.replace('/(customer)');
           } else if (user.role === 'hairdresser') {
-            console.log('hairdresser\'a yönlendiriliyor');
             router.replace('/(hairdresser)');
           }
         } else {
@@ -50,7 +47,6 @@ export default function Index() {
     const timeout = setTimeout(() => {
       if (!resolved.current) {
         resolved.current = true;
-        console.log('Timeout! login\'e yönlendiriliyor');
         router.replace('/(auth)/login');
       }
     }, 5000);
@@ -64,7 +60,7 @@ export default function Index() {
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
       <ActivityIndicator size="large" color={COLORS.primary} />
-      <Text style={{ color: COLORS.textPrimary, marginTop: 16 }}>Yükleniyor...</Text>
+      <Text style={{ color: COLORS.textPrimary, marginTop: 16, fontSize: 14 }}>Yükleniyor...</Text>
     </View>
   );
 }
