@@ -62,8 +62,9 @@ function TabIcon({ iconName, label, focused, curveOffset }: { iconName: any; lab
       ]}>
         <Ionicons
           name={focused ? iconName : `${iconName}-outline`}
-          size={24}
+          size={26}
           color={focused ? '#000000' : THEME.textMuted}
+          
         />
       </Animated.View>
       <Animated.View style={[
@@ -231,7 +232,7 @@ export default function CustomerLayout() {
         <Tabs.Screen name="my-jobs" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="briefcase" label="İşlerim" focused={focused} curveOffset={24} /> ) }} />
         <Tabs.Screen name="explore" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="search" label="Keşfet" focused={focused} curveOffset={-10} /> ) }} />
         <Tabs.Screen name="chats" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="chatbubble" label="Sohbet" focused={focused} curveOffset={-24} /> ) }} />
-        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="home" label="Ana Sayfa" focused={focused} curveOffset={-24} /> ) }} />
+        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="home" label="Ana Sayfa"  focused={focused} curveOffset={-24} /> ) }} />
         <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-10} /> ) }} />
         <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="person" label="Profil" focused={focused} curveOffset={24} /> ) }} />
         <Tabs.Screen name="ai-hair" options={{ href: null }} />
