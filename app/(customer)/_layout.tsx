@@ -85,7 +85,7 @@ const tabStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 60,
-    width: 55,
+    width: 60,
   },
   glowBackground: {
     position: 'absolute',
@@ -93,7 +93,7 @@ const tabStyles = StyleSheet.create({
     width: 44,
     height: 44,
     backgroundColor: THEME.activeGlow,
-    borderRadius: 22,
+    borderRadius: 30,
     shadowColor: THEME.activeGlow,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.8,
@@ -110,23 +110,23 @@ const tabStyles = StyleSheet.create({
   },
   activeElements: {
     position: 'absolute',
-    bottom: -12,
+    bottom: -8,
     alignItems: 'center',
     justifyContent: 'center',
     width: '100%',
   },
   indicatorLine: {
-    width: 24,
-    height: 3,
+    width: 40,
+    height: 2,
     backgroundColor: THEME.activeGlow,
     borderRadius: 2,
-    marginBottom: 4,
+    marginBottom: 5,
   },
   label: {
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '800',
     color: THEME.activeGlow,
-    letterSpacing: 0.3,
+    letterSpacing: 0.4,
   },
 });
 
@@ -156,7 +156,7 @@ function AICurveButton() {
 const aiStyles = StyleSheet.create({
   layer: {
     position: 'absolute',
-    bottom: -180,
+    bottom: -200,
     left: 0,
     right: 0,
     height: 250,
@@ -171,17 +171,17 @@ const aiStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'center',
-    gap: 6,
+    gap: 10,
     width: width * 1,
-    height: 250,
+    height: 200,
     backgroundColor: THEME.aiButton,
-    borderTopLeftRadius: width * 0.75,
-    borderTopRightRadius: width * 0.75,
-    paddingTop: 22,
+    borderTopLeftRadius: width * 0.85, // Büyük kavis
+    borderTopRightRadius: width * 0.85, // Büyük kavis
+    paddingTop: 10, // İkonun üstünde boşluk
   },
   label: {
     color: THEME.textWhite,
-    fontWeight: '800',
+    fontWeight: '900',
     fontSize: 20,
     letterSpacing: 0.5,
   },
@@ -200,7 +200,7 @@ export default function CustomerLayout() {
             bottom: 0,
             left: 0,
             right: 0,
-            height: 130,
+            height: 110,
             borderTopWidth: 0,
             elevation: 0,
           },
@@ -228,12 +228,12 @@ export default function CustomerLayout() {
           ),
         }}
       >
-        <Tabs.Screen name="my-jobs" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="briefcase" label="İşlerim" focused={focused} curveOffset={12} /> ) }} />
-        <Tabs.Screen name="explore" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="search" label="Keşfet" focused={focused} curveOffset={-18} /> ) }} />
-        <Tabs.Screen name="chats" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="chatbubble" label="Sohbet" focused={focused} curveOffset={-35} /> ) }} />
-        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="home" label="Ana Sayfa" focused={focused} curveOffset={-35} /> ) }} />
-        <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-18} /> ) }} />
-        <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="person" label="Profil" focused={focused} curveOffset={12} /> ) }} />
+        <Tabs.Screen name="my-jobs" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="briefcase" label="İşlerim" focused={focused} curveOffset={24} /> ) }} />
+        <Tabs.Screen name="explore" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="search" label="Keşfet" focused={focused} curveOffset={-10} /> ) }} />
+        <Tabs.Screen name="chats" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="chatbubble" label="Sohbet" focused={focused} curveOffset={-24} /> ) }} />
+        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="home" label="Ana Sayfa" focused={focused} curveOffset={-24} /> ) }} />
+        <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-10} /> ) }} />
+        <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="person" label="Profil" focused={focused} curveOffset={24} /> ) }} />
         <Tabs.Screen name="ai-hair" options={{ href: null }} />
       </Tabs>
 

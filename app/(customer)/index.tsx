@@ -1,9 +1,12 @@
 // Müşteri ana sayfası
-// Üst bar, hızlı aksiyonlar, yakındaki kuaförler, coin bakiyesi
+// 1. Üst bar — hoş geldin + coin + bildirim
+// 2. AI Saç banner
+// 3. Takip ettiklerin — yatay scroll
+// 4. Toggle 1: Son Denemeler | Favoriler
+// 5. Toggle 2: Kampanyalar | Popüler Modeller | Önerilen Kuaförler
 // Şimdilik dummy data — Firestore bağlantısı sonra eklenecek
-// authStore'dan kullanıcı bilgisi alınır
 
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -21,114 +24,355 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
 const { width } = Dimensions.get('window');
 
-// Dummy kuaför verisi — Firestore bağlantısı sonra eklenecek
-const DUMMY_HAIRDRESSERS = [
-  { id: '1', name: 'Salon Elegance', city: 'İstanbul', rating: 4.8, reviews: 124, speciality: 'Renk & Kesim', emoji: '💇‍♀️' },
-  { id: '2', name: 'Modern Saç', city: 'İstanbul', rating: 4.6, reviews: 89, speciality: 'Balayage', emoji: '✨' },
-  { id: '3', name: 'Style Studio', city: 'İstanbul', rating: 4.9, reviews: 203, speciality: 'Gelin Saçı', emoji: '👑' },
+// ── DUMMY VERİLER ──────────────────────────────────────────
+const DUMMY_FOLLOWING = [
+  { id: '1', name: 'Salon Elegance', emoji: '💇‍♀️', isOnline: true },
+  { id: '2', name: 'Modern Saç', emoji: '✨', isOnline: false },
+  { id: '3', name: 'Style Studio', emoji: '👑', isOnline: true },
+  { id: '4', name: 'Hair Lab', emoji: '🎨', isOnline: true },
+  { id: '5', name: 'Glam House', emoji: '💅', isOnline: false },
 ];
 
-// Hızlı aksiyon kartı
-function QuickAction({ emoji, label, color, onPress }: {
-  emoji: string;
-  label: string;
-  color: string;
-  onPress: () => void;
+const DUMMY_AI_TRIES = [
+  { id: '1', style: 'Dalgalı Bob', color: 'Karamel', emoji: '🌊' },
+  { id: '2', style: 'Uzun Düz', color: 'Platin', emoji: '⚡' },
+  { id: '3', style: 'Pixie Cut', color: 'Doğal', emoji: '🌿' },
+];
+
+const DUMMY_FAVORITES = [
+  { id: '1', style: 'Balayage', color: 'Altın', emoji: '🌟' },
+  { id: '2', style: 'Wolf Cut', color: 'Koyu', emoji: '🐺' },
+  { id: '3', style: 'Butterfly', color: 'Kahve', emoji: '🦋' },
+  { id: '4', style: 'Bob Kesim', color: 'Siyah', emoji: '✂️' },
+];
+
+const DUMMY_CAMPAIGNS = [
+  { id: '1', salon: 'Salon Elegance', title: '%30 İndirim', desc: 'Tüm renk işlemleri', emoji: '🎉', validUntil: '31 Ara' },
+  { id: '2', salon: 'Modern Saç', title: 'Ücretsiz Bakım', desc: 'Keratin + Saç bakımı', emoji: '💝', validUntil: '15 Ara' },
+  { id: '3', salon: 'Style Studio', title: '2 Al 1 Öde', desc: 'Gelin paketi', emoji: '👑', validUntil: '31 Oca' },
+];
+
+const DUMMY_TRENDING = [
+  { id: '1', style: 'Wolf Cut', likes: '12.4K', emoji: '🐺', trend: '↑ Trend' },
+  { id: '2', style: 'Curtain Bangs', likes: '8.9K', emoji: '✂️', trend: '🔥 Ateş' },
+  { id: '3', style: 'Butterfly Cut', likes: '6.2K', emoji: '🦋', trend: '⭐ Yeni' },
+  { id: '4', style: 'Bixie Cut', likes: '4.8K', emoji: '💫', trend: '↑ Trend' },
+];
+
+const DUMMY_SPONSORED = [
+  { id: '1', name: 'Premium Salon', speciality: 'Saç Boyama Uzmanı', rating: 4.9, price: '₺250+', emoji: '⭐', tag: 'Reklam' },
+  { id: '2', name: 'Luxury Hair', speciality: 'Keratin Uzmanı', rating: 4.7, price: '₺400+', emoji: '💎', tag: 'Önerilen' },
+];
+
+// ── TAB TOGGLE ─────────────────────────────────────────────
+function TabToggle({
+  tabs,
+  activeIndex,
+  onPress,
+}: {
+  tabs: string[];
+  activeIndex: number;
+  onPress: (i: number) => void;
 }) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const containerWidth = width - SPACING.lg * 2 - 8;
+  const tabWidth = containerWidth / tabs.length;
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start();
-  };
+  useEffect(() => {
+    Animated.spring(slideAnim, {
+      toValue: activeIndex * tabWidth,
+      tension: 80,
+      friction: 12,
+      useNativeDriver: true,
+    }).start();
+  }, [activeIndex]);
 
   return (
+    <View style={toggleStyles.container}>
+      <Animated.View
+        style={[
+          toggleStyles.slider,
+          {
+            width: tabWidth,
+            transform: [{ translateX: slideAnim }],
+          },
+        ]}
+      />
+      {tabs.map((tab, i) => (
+        <TouchableOpacity
+          key={tab}
+          style={[toggleStyles.tab, { width: tabWidth }]}
+          onPress={() => onPress(i)}
+          activeOpacity={0.7}
+        >
+          <Text
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.7}
+            style={[
+              toggleStyles.tabText,
+              activeIndex === i && toggleStyles.tabTextActive,
+            ]}
+          >
+            {tab}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+const toggleStyles = StyleSheet.create({
+  container: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderRadius: RADIUS.lg,
+    padding: 4,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    height: 44,
+  },
+  slider: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 4,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primary,
+    shadowColor: COLORS.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  tab: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1,
+    paddingHorizontal: 4,
+  },
+  tabText: {
+    fontSize: FONTS.small,
+    fontWeight: '600',
+    color: COLORS.textMuted,
+    textAlign: 'center',
+  },
+  tabTextActive: {
+    color: COLORS.white,
+    fontWeight: '800',
+  },
+});
+
+// ── KART BİLEŞENLERİ ──────────────────────────────────────
+
+function FollowingCard({ item }: { item: typeof DUMMY_FOLLOWING[0] }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  return (
     <TouchableOpacity
-      onPress={onPress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
       activeOpacity={1}
     >
-      <Animated.View style={[styles.quickAction, { transform: [{ scale: scaleAnim }] }]}>
+      <Animated.View style={[styles.followingCard, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={styles.followingAvatarWrapper}>
+          <View style={[styles.followingAvatar, item.isOnline && styles.followingAvatarOnline]}>
+            <Text style={styles.followingEmoji}>{item.emoji}</Text>
+          </View>
+          {item.isOnline && <View style={styles.onlineDot} />}
+        </View>
+        <Text style={styles.followingName} numberOfLines={1}>{item.name}</Text>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function AICard({ item }: { item: { id: string; style: string; color: string; emoji: string } }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  return (
+    <TouchableOpacity
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.aiCard, { transform: [{ scale: scaleAnim }] }]}>
         <LinearGradient
-          colors={[color + '33', color + '11']}
-          style={styles.quickActionGradient}
+          colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
+          style={styles.aiCardGradient}
         >
-          <Text style={styles.quickActionEmoji}>{emoji}</Text>
-          <Text style={styles.quickActionLabel}>{label}</Text>
+          <Text style={styles.aiCardEmoji}>{item.emoji}</Text>
+          <Text style={styles.aiCardStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+            {item.style}
+          </Text>
+          <Text style={styles.aiCardColor} numberOfLines={1}>
+            {item.color}
+          </Text>
         </LinearGradient>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-// Kuaför kartı
-function HairdresserCard({ item, onPress }: { item: typeof DUMMY_HAIRDRESSERS[0]; onPress: () => void }) {
+function CampaignCard({ item }: { item: typeof DUMMY_CAMPAIGNS[0] }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-
   return (
     <TouchableOpacity
-      onPress={onPress}
       onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()}
       onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
       activeOpacity={1}
     >
-      <Animated.View style={[styles.hairdresserCard, { transform: [{ scale: scaleAnim }] }]}>
-        <View style={styles.hairdresserAvatar}>
-          <Text style={styles.hairdresserEmoji}>{item.emoji}</Text>
-        </View>
-        <View style={styles.hairdresserInfo}>
-          <Text style={styles.hairdresserName}>{item.name}</Text>
-          <Text style={styles.hairdresserSpeciality}>{item.speciality}</Text>
-          <View style={styles.hairdresserMeta}>
-            <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
-            <Text style={styles.hairdresserCity}>{item.city}</Text>
+      <Animated.View style={[styles.campaignCard, { transform: [{ scale: scaleAnim }] }]}>
+        <LinearGradient
+          colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']}
+          style={styles.campaignGradient}
+        >
+          <Text style={styles.campaignEmoji}>{item.emoji}</Text>
+          <View style={styles.campaignInfo}>
+            <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon}</Text>
+            <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+              {item.title}
+            </Text>
+            <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc}</Text>
           </View>
-        </View>
-        <View style={styles.hairdresserRating}>
-          <View style={styles.ratingBadge}>
-            <Ionicons name="star" size={12} color="#FFB844" />
-            <Text style={styles.ratingText}>{item.rating}</Text>
+          <View style={styles.campaignRight}>
+            <View style={styles.campaignDate}>
+              <Ionicons name="time-outline" size={10} color={COLORS.textMuted} />
+              <Text style={styles.campaignDateText}>{item.validUntil}</Text>
+            </View>
+            <TouchableOpacity style={styles.campaignButton}>
+              <Text style={styles.campaignButtonText}>Kullan</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.reviewCount}>{item.reviews} yorum</Text>
+        </LinearGradient>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+function TrendCard({ item }: { item: typeof DUMMY_TRENDING[0] }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  return (
+    <TouchableOpacity
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.trendCard, { transform: [{ scale: scaleAnim }] }]}>
+        <Text style={styles.trendEmoji}>{item.emoji}</Text>
+        <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
+          {item.style}
+        </Text>
+        <View style={styles.trendMeta}>
+          <Text style={styles.trendTag} numberOfLines={1}>{item.trend}</Text>
+          <View style={styles.trendLikes}>
+            <Ionicons name="heart" size={10} color={COLORS.error} />
+            <Text style={styles.trendLikesText}>{item.likes}</Text>
+          </View>
         </View>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
+function SponsoredCard({ item }: { item: typeof DUMMY_SPONSORED[0] }) {
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+  return (
+    <TouchableOpacity
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.sponsoredCard, { transform: [{ scale: scaleAnim }] }]}>
+        <View style={styles.sponsoredTag}>
+          <Text style={styles.sponsoredTagText}>{item.tag}</Text>
+        </View>
+        <View style={styles.sponsoredAvatar}>
+          <Text style={styles.sponsoredEmoji}>{item.emoji}</Text>
+        </View>
+        <View style={styles.sponsoredInfo}>
+          <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+            {item.name}
+          </Text>
+          <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.speciality}</Text>
+          <View style={styles.sponsoredMeta}>
+            <View style={styles.ratingRow}>
+              <Ionicons name="star" size={11} color="#FFB844" />
+              <Text style={styles.ratingText}>{item.rating}</Text>
+            </View>
+            <Text style={styles.sponsoredPrice}>{item.price}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.bookButton}>
+          <Text style={styles.bookButtonText}>Randevu</Text>
+        </TouchableOpacity>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// ── FADE TAB PANEL ─────────────────────────────────────────
+// Tüm paneller her zaman DOM'da. position: 'absolute' sabit —
+// layout atlaması yok. Sadece opacity Animated ile değişiyor.
+// Wrapper'a sabit minHeight verilince pasif paneller yer kaplamaz.
+function FadeTabPanel({
+  active,
+  children,
+}: {
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  const opacity = useRef(new Animated.Value(active ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(opacity, {
+      toValue: active ? 1 : 0,
+      duration: active ? 200 : 150,
+      useNativeDriver: true,
+    }).start();
+  }, [active]);
+
+  return (
+    <Animated.View
+      pointerEvents={active ? 'auto' : 'none'}
+      style={{
+        opacity,
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+      }}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+// ── ANA EKRAN ─────────────────────────────────────────────
 export default function CustomerHomeScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
 
+  const [aiTab, setAiTab] = useState(0);
+  const [discoverTab, setDiscoverTab] = useState(0);
+
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const contentAnim = useRef(new Animated.Value(30)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
+  const contentAnim = useRef(new Animated.Value(30)).current;
+  const bannerScale = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(headerAnim, {
-        toValue: 1,
-        duration: 600,
-        useNativeDriver: false,
-      }),
-      Animated.timing(contentAnim, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false,
-      }),
-      Animated.timing(contentOpacity, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: false,
-      }),
+      Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
+      Animated.timing(contentOpacity, { toValue: 1, duration: 600, useNativeDriver: false }),
+      Animated.timing(contentAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
+      Animated.spring(bannerScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: false }),
     ]).start();
   }, []);
 
   const firstName = user?.displayName?.split(' ')[0] || 'Kullanıcı';
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar';
 
   return (
     <View style={styles.container}>
@@ -138,7 +382,6 @@ export default function CustomerHomeScreen() {
         end={{ x: 0.8, y: 1 }}
         style={StyleSheet.absoluteFill}
       />
-
       <View style={styles.orb1} />
       <View style={styles.orb2} />
 
@@ -146,111 +389,168 @@ export default function CustomerHomeScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Üst bar */}
+        {/* ── ÜST BAR ── */}
         <Animated.View style={[styles.header, { opacity: headerAnim }]}>
           <View>
-            <Text style={styles.greeting}>Merhaba 👋</Text>
+            <Text style={styles.greeting}>{greeting} 👋</Text>
             <Text style={styles.userName}>{firstName}</Text>
           </View>
-          <TouchableOpacity style={styles.notifButton}>
-            <Ionicons name="notifications-outline" size={24} color={COLORS.textPrimary} />
-            <View style={styles.notifDot} />
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.coinBadge}>
+              <Text style={styles.coinBadgeEmoji}>🪙</Text>
+              <Text style={styles.coinBadgeText}>{user?.coinBalance || 0}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.notifButton}>
+              <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+              <View style={styles.notifDot} />
+            </TouchableOpacity>
+          </View>
         </Animated.View>
 
-        <Animated.View style={{
-          opacity: contentOpacity,
-          transform: [{ translateY: contentAnim }],
-        }}>
+        <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentAnim }] }}>
 
-          {/* AI Banner */}
-          <TouchableOpacity
-            onPress={() => router.push('/(customer)/ai-hair')}
-            style={styles.aiBannerWrapper}
-          >
-            <LinearGradient
-              colors={[COLORS.primaryDark, COLORS.primary]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.aiBanner}
-            >
-              <View style={styles.aiBannerContent}>
-                <Text style={styles.aiBannerTitle}>AI Saç Deneme</Text>
-                <Text style={styles.aiBannerSubtitle}>
-                  Yeni saç modelini önce dene, sonra karar ver
-                </Text>
-                <View style={styles.aiBannerButton}>
-                  <Text style={styles.aiBannerButtonText}>Hemen Dene</Text>
-                  <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
+          {/* ── AI SAÇ BANNER ── */}
+          <Animated.View style={[styles.bannerWrapper, { transform: [{ scale: bannerScale }] }]}>
+            <TouchableOpacity onPress={() => router.replace('/(customer)/ai-hair')} activeOpacity={0.9}>
+              <LinearGradient
+                colors={[COLORS.primaryDark, COLORS.primary, '#C084FC']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.banner}
+              >
+                <View style={styles.bannerContent}>
+                  <View style={styles.bannerBadge}>
+                    <Text style={styles.bannerBadgeText}>✨ Yapay Zeka</Text>
+                  </View>
+                  <Text style={styles.bannerTitle}>Saç Modelini{'\n'}Önce Dene!</Text>
+                  <Text style={styles.bannerSubtitle}>Fotoğrafına yeni saç modelini uygula</Text>
+                  <View style={styles.bannerButton}>
+                    <Text style={styles.bannerButtonText}>Hemen Dene</Text>
+                    <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.aiBannerEmoji}>✨</Text>
-            </LinearGradient>
-          </TouchableOpacity>
+                <View style={styles.bannerDecor}>
+                  <Text style={styles.bannerDecorEmoji}>💇‍♀️</Text>
+                  <View style={styles.bannerDecorCircle1} />
+                  <View style={styles.bannerDecorCircle2} />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
 
-          {/* Hızlı aksiyonlar */}
-          <Text style={styles.sectionTitle}>Hızlı İşlemler</Text>
-          <View style={styles.quickActions}>
-            <QuickAction
-              emoji="🔍"
-              label="Kuaför Bul"
-              color={COLORS.primary}
-              onPress={() => router.push('/(customer)/explore')}
-            />
-            <QuickAction
-              emoji="💼"
-              label="İlan Oluştur"
-              color="#34D399"
-              onPress={() => router.push('/(customer)/my-jobs')}
-            />
-            <QuickAction
-              emoji="💬"
-              label="Mesajlar"
-              color="#FBBF24"
-              onPress={() => router.push('/(customer)/chats')}
-            />
-            <QuickAction
-              emoji="📅"
-              label="Randevular"
-              color="#F87171"
-              onPress={() => router.push('/(customer)/appointments')}
-            />
-          </View>
-
-          {/* Yakındaki kuaförler */}
+          {/* ── TAKİP ETTİKLERİN ── */}
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Yakındaki Kuaförler</Text>
-            <TouchableOpacity onPress={() => router.push('/(customer)/explore')}>
+            <Text style={styles.sectionTitle}>Takip Ettiklerin</Text>
+            <TouchableOpacity onPress={() => router.replace('/(customer)/explore')}>
               <Text style={styles.seeAll}>Tümünü Gör</Text>
             </TouchableOpacity>
           </View>
-
-          <View style={styles.hairdresserList}>
-            {DUMMY_HAIRDRESSERS.map((item) => (
-              <HairdresserCard
-                key={item.id}
-                item={item}
-                onPress={() => {}}
-              />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.followingList}
+          >
+            {DUMMY_FOLLOWING.map((item) => (
+              <FollowingCard key={item.id} item={item} />
             ))}
+          </ScrollView>
+
+          {/* ── TOGGLE 1: SON DENEMELER / FAVORİLER ── */}
+          <TabToggle
+            tabs={['Son Denemeler', 'Favoriler']}
+            activeIndex={aiTab}
+            onPress={setAiTab}
+          />
+
+          {/*
+            Her iki panel her zaman mount edilmiş durumda.
+            Aktif olan 'relative' konumda (layout'ta yer kaplıyor),
+            pasif olan 'absolute' konumda (layout'tan çıkmış, görünmez).
+            Böylece tab değişince hiç unmount/remount olmuyor.
+          */}
+          {/* minHeight = kart yüksekliği (110) + paddingBottom (8) */}
+          <View style={[styles.tabPanelContainer, { minHeight: 126 }]}>
+            <FadeTabPanel active={aiTab === 0}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.aiCardList}
+              >
+                {DUMMY_AI_TRIES.length === 0 ? (
+                  <TouchableOpacity
+                    style={styles.aiEmptyCard}
+                    onPress={() => router.replace('/(customer)/ai-hair')}
+                  >
+                    <Ionicons name="sparkles-outline" size={28} color={COLORS.primary} />
+                    <Text style={styles.aiEmptyText}>İlk denemeyi yap!</Text>
+                  </TouchableOpacity>
+                ) : (
+                  DUMMY_AI_TRIES.map((item) => <AICard key={item.id} item={item} />)
+                )}
+              </ScrollView>
+            </FadeTabPanel>
+
+            <FadeTabPanel active={aiTab === 1}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.aiCardList}
+              >
+                {DUMMY_FAVORITES.length === 0 ? (
+                  <TouchableOpacity
+                    style={styles.aiEmptyCard}
+                    onPress={() => router.replace('/(customer)/ai-hair')}
+                  >
+                    <Ionicons name="sparkles-outline" size={28} color={COLORS.primary} />
+                    <Text style={styles.aiEmptyText}>Henüz favori yok</Text>
+                  </TouchableOpacity>
+                ) : (
+                  DUMMY_FAVORITES.map((item) => <AICard key={item.id} item={item} />)
+                )}
+              </ScrollView>
+            </FadeTabPanel>
           </View>
 
-          {/* Coin bakiyesi */}
-          <TouchableOpacity style={styles.coinCard}>
-            <LinearGradient
-              colors={['#D4A01733', '#D4A01711']}
-              style={styles.coinCardGradient}
-            >
-              <View style={styles.coinCardLeft}>
-                <Text style={styles.coinEmoji}>🪙</Text>
-                <View>
-                  <Text style={styles.coinLabel}>Coin Bakiyem</Text>
-                  <Text style={styles.coinBalance}>{user?.coinBalance || 0} Coin</Text>
-                </View>
+          {/* ── TOGGLE 2: KAMPANYALAR / POPÜLER / ÖNERİLEN ── */}
+          <View style={[styles.sectionHeader, { marginTop: SPACING.xl }]}>
+            <Text style={styles.sectionTitle}>Keşfet</Text>
+          </View>
+          <TabToggle
+            tabs={['Kampanyalar', 'Popüler', 'Önerilen']}
+            activeIndex={discoverTab}
+            onPress={setDiscoverTab}
+          />
+
+          {/* minHeight: en uzun panel olan Kampanyalar için — 3×72 + 2×12 gap = 240 */}
+          <View style={[styles.tabPanelContainer, { minHeight: 240, paddingHorizontal: SPACING.lg }]}>
+            <FadeTabPanel active={discoverTab === 0}>
+              <View style={styles.discoverList}>
+                {DUMMY_CAMPAIGNS.map((item) => (
+                  <CampaignCard key={item.id} item={item} />
+                ))}
               </View>
-              <Ionicons name="chevron-forward" size={20} color="#D4A017" />
-            </LinearGradient>
-          </TouchableOpacity>
+            </FadeTabPanel>
+
+            <FadeTabPanel active={discoverTab === 1}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}
+              >
+                {DUMMY_TRENDING.map((item) => (
+                  <TrendCard key={item.id} item={item} />
+                ))}
+              </ScrollView>
+            </FadeTabPanel>
+
+            <FadeTabPanel active={discoverTab === 2}>
+              <View style={styles.discoverList}>
+                {DUMMY_SPONSORED.map((item) => (
+                  <SponsoredCard key={item.id} item={item} />
+                ))}
+              </View>
+            </FadeTabPanel>
+          </View>
 
         </Animated.View>
       </ScrollView>
@@ -265,13 +565,13 @@ const styles = StyleSheet.create({
   },
   orb1: {
     position: 'absolute',
-    width: 250,
-    height: 250,
-    borderRadius: 125,
+    width: 300,
+    height: 300,
+    borderRadius: 150,
     backgroundColor: '#7C3AED',
-    opacity: 0.2,
-    top: -80,
-    right: -60,
+    opacity: 0.15,
+    top: -100,
+    right: -80,
   },
   orb2: {
     position: 'absolute',
@@ -279,19 +579,19 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 100,
     backgroundColor: '#A78BFA',
-    opacity: 0.1,
-    bottom: 200,
+    opacity: 0.08,
+    bottom: 300,
     left: -60,
   },
   scrollContent: {
-    paddingTop: 60,
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: 100,
+    paddingTop: 56,
+    paddingBottom: 180,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.xl,
   },
   greeting: {
@@ -299,14 +599,36 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
   },
   userName: {
-    fontSize: FONTS.xxlarge,
+    fontSize: 26,
     fontWeight: 'bold',
     color: COLORS.textPrimary,
     letterSpacing: 0.3,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  coinBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(212,160,23,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(212,160,23,0.3)',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: RADIUS.full,
+  },
+  coinBadgeEmoji: { fontSize: 14 },
+  coinBadgeText: {
+    fontSize: FONTS.small,
+    fontWeight: 'bold',
+    color: '#D4A017',
+  },
   notifButton: {
-    width: 44,
-    height: 44,
+    width: 40,
+    height: 40,
     borderRadius: RADIUS.md,
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderWidth: 1,
@@ -318,203 +640,365 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    width: 8,
-    height: 8,
+    width: 7,
+    height: 7,
     borderRadius: 4,
     backgroundColor: COLORS.error,
     borderWidth: 1.5,
     borderColor: COLORS.background,
   },
-  aiBannerWrapper: {
+  bannerWrapper: {
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.xl,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
   },
-  aiBanner: {
+  banner: {
+    borderRadius: RADIUS.xl,
     padding: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    minHeight: 120,
+    minHeight: 160,
+    overflow: 'hidden',
   },
-  aiBannerContent: {
-    flex: 1,
-    gap: SPACING.xs,
+  bannerContent: { flex: 1, gap: SPACING.xs },
+  bannerBadge: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: RADIUS.full,
+    alignSelf: 'flex-start',
+    marginBottom: 4,
   },
-  aiBannerTitle: {
-    fontSize: FONTS.large,
+  bannerBadgeText: {
+    fontSize: FONTS.small,
+    color: COLORS.white,
+    fontWeight: '600',
+  },
+  bannerTitle: {
+    fontSize: FONTS.xlarge,
     fontWeight: 'bold',
     color: COLORS.white,
+    lineHeight: 28,
   },
-  aiBannerSubtitle: {
+  bannerSubtitle: {
     fontSize: FONTS.small,
     color: 'rgba(255,255,255,0.8)',
     lineHeight: 18,
   },
-  aiBannerButton: {
+  bannerButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     marginTop: SPACING.sm,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     borderRadius: RADIUS.full,
     alignSelf: 'flex-start',
   },
-  aiBannerButtonText: {
+  bannerButtonText: {
     fontSize: FONTS.small,
     color: COLORS.white,
-    fontWeight: '600',
+    fontWeight: '700',
   },
-  aiBannerEmoji: {
-    fontSize: 56,
-    marginLeft: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: FONTS.large,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    marginBottom: SPACING.md,
-  },
-  quickActions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.xl,
-  },
-  quickAction: {
-    width: (width - SPACING.lg * 2 - SPACING.sm * 3) / 4,
-    borderRadius: RADIUS.md,
-    overflow: 'hidden',
-  },
-  quickActionGradient: {
-    padding: SPACING.sm,
+  bannerDecor: {
+    position: 'relative',
+    width: 90,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    minHeight: 72,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-    borderRadius: RADIUS.md,
   },
-  quickActionEmoji: {
-    fontSize: 24,
+  bannerDecorEmoji: { fontSize: 64, zIndex: 2 },
+  bannerDecorCircle1: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
-  quickActionLabel: {
-    fontSize: 9,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    fontWeight: '600',
+  bannerDecorCircle2: {
+    position: 'absolute',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
+  },
+  sectionTitle: {
+    fontSize: FONTS.large,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
   },
   seeAll: {
     fontSize: FONTS.small,
     color: COLORS.primary,
     fontWeight: '600',
   },
-  hairdresserList: {
-    gap: SPACING.sm,
+  followingList: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.md,
     marginBottom: SPACING.xl,
   },
-  hairdresserCard: {
+  followingCard: {
+    alignItems: 'center',
+    gap: SPACING.xs,
+    width: 68,
+  },
+  followingAvatarWrapper: { position: 'relative' },
+  followingAvatar: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  followingAvatarOnline: { borderColor: COLORS.primary },
+  followingEmoji: { fontSize: 26 },
+  onlineDot: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: COLORS.success,
+    borderWidth: 2,
+    borderColor: COLORS.background,
+  },
+  followingName: {
+    fontSize: 10,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  // Tab panel wrapper — pasif paneller absolute ile üst üste oturur
+  tabPanelContainer: {
+    position: 'relative',
+    marginBottom: SPACING.lg,
+  },
+  aiCardList: {
+    paddingHorizontal: SPACING.lg,
+    gap: SPACING.md,
+    paddingBottom: SPACING.sm,
+  },
+  // SABİT yükseklik — yazı uzasa da kutu büyümez
+  aiCard: {
+    width: 110,
+    height: 110,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  aiCardGradient: {
+    flex: 1,
+    padding: SPACING.md,
+    alignItems: 'center',
+    gap: SPACING.xs,
+    justifyContent: 'center',
+  },
+  aiCardEmoji: { fontSize: 32 },
+  aiCardStyle: {
+    fontSize: FONTS.small,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  aiCardColor: {
+    fontSize: 10,
+    color: COLORS.textMuted,
+    textAlign: 'center',
+  },
+  aiEmptyCard: {
+    width: 140,
+    height: 110,
+    borderRadius: RADIUS.lg,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  aiEmptyText: {
+    fontSize: FONTS.small,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  discoverList: {
+    gap: SPACING.md,
+    paddingBottom: SPACING.md,
+  },
+  // SABİT yükseklik — tüm kampanya kartları aynı boy
+  campaignCard: {
+    height: 72,
+    borderRadius: RADIUS.lg,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  campaignGradient: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+  },
+  campaignEmoji: { fontSize: 28 },
+  campaignInfo: { flex: 1, gap: 1, overflow: 'hidden' },
+  campaignSalon: { fontSize: 10, color: COLORS.textMuted },
+  campaignTitle: {
+    fontSize: FONTS.medium,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  campaignDesc: {
+    fontSize: FONTS.small,
+    color: COLORS.textSecondary,
+  },
+  campaignRight: {
+    alignItems: 'flex-end',
+    gap: SPACING.sm,
+    flexShrink: 0,
+  },
+  campaignDate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  campaignDateText: { fontSize: 10, color: COLORS.textMuted },
+  campaignButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+    borderRadius: RADIUS.full,
+  },
+  campaignButtonText: {
+    fontSize: 11,
+    color: COLORS.white,
+    fontWeight: '700',
+  },
+  // SABİT yükseklik — trend kartları
+  trendCard: {
+    width: 110,
+    height: 110,
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADIUS.lg,
     padding: SPACING.md,
-    gap: SPACING.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    overflow: 'hidden',
   },
-  hairdresserAvatar: {
-    width: 52,
-    height: 52,
+  trendEmoji: { fontSize: 28 },
+  trendStyle: {
+    fontSize: FONTS.small,
+    fontWeight: 'bold',
+    color: COLORS.textPrimary,
+    textAlign: 'center',
+  },
+  trendMeta: { alignItems: 'center', gap: 3 },
+  trendTag: {
+    fontSize: 10,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  trendLikes: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  trendLikesText: { fontSize: 10, color: COLORS.textMuted },
+  // SABİT yükseklik — önerilen kuaför kartları
+  sponsoredCard: {
+    height: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADIUS.xl,
+    paddingHorizontal: SPACING.md,
+    gap: SPACING.md,
+    overflow: 'hidden',
+  },
+  sponsoredTag: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    backgroundColor: '#D4A01722',
+    paddingVertical: 2,
+    paddingHorizontal: 7,
+    borderRadius: RADIUS.full,
+    borderWidth: 1,
+    borderColor: '#D4A01744',
+  },
+  sponsoredTagText: {
+    fontSize: 9,
+    color: '#D4A017',
+    fontWeight: '700',
+  },
+  sponsoredAvatar: {
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.md,
     backgroundColor: COLORS.primary + '22',
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
-  hairdresserEmoji: {
-    fontSize: 26,
-  },
-  hairdresserInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  hairdresserName: {
+  sponsoredEmoji: { fontSize: 24 },
+  sponsoredInfo: { flex: 1, gap: 2, overflow: 'hidden' },
+  sponsoredName: {
     fontSize: FONTS.medium,
     fontWeight: 'bold',
     color: COLORS.textPrimary,
   },
-  hairdresserSpeciality: {
+  sponsoredSpeciality: {
     fontSize: FONTS.small,
     color: COLORS.textSecondary,
   },
-  hairdresserMeta: {
+  sponsoredMeta: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    justifyContent: 'space-between',
     marginTop: 2,
   },
-  hairdresserCity: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  hairdresserRating: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
-  ratingBadge: {
+  ratingRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
-    backgroundColor: '#FFB84422',
-    paddingVertical: 3,
-    paddingHorizontal: 7,
-    borderRadius: RADIUS.full,
   },
   ratingText: {
     fontSize: FONTS.small,
     color: '#FFB844',
     fontWeight: 'bold',
   },
-  reviewCount: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-  },
-  coinCard: {
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#D4A01744',
-  },
-  coinCardGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: SPACING.md,
-  },
-  coinCardLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  coinEmoji: {
-    fontSize: 32,
-  },
-  coinLabel: {
+  sponsoredPrice: {
     fontSize: FONTS.small,
-    color: COLORS.textSecondary,
+    color: COLORS.success,
+    fontWeight: '600',
   },
-  coinBalance: {
-    fontSize: FONTS.large,
-    fontWeight: 'bold',
-    color: '#D4A017',
+  bookButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: RADIUS.md,
+    flexShrink: 0,
+  },
+  bookButtonText: {
+    fontSize: 11,
+    color: COLORS.white,
+    fontWeight: '700',
   },
 });
