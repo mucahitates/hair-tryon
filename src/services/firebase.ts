@@ -1,23 +1,22 @@
 // Firebase başlatma dosyası
 // Auth, Firestore ve Storage instance'larını dışa aktarır
-// Tüm servis dosyaları (authService, userService vb.) buradan import eder
-// KRİTİK: initializeAuth değil getAuth kullanıyoruz — persistence eklersek
-// ilk açılışta null→user sırası bozuluyor
+// Tüm servis dosyaları buradan import eder
+// KRİTİK: initializeAuth değil getAuth kullanıyoruz
+// Değerler .env dosyasından EXPO_PUBLIC_ prefix ile okunur
+// EXPO_PUBLIC_ prefix'i olmayan değerler client'ta görünmez
 
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
-// Firebase proje yapılandırması
-// Bu bilgiler Firebase Console → Project Settings → Web App'ten alındı
 const firebaseConfig = {
-  apiKey: 'AIzaSyA9mnHuMLzvi0P2IMYplOzzITdIcvGhidY',
-  authDomain: 'hair-tryon-41cea.firebaseapp.com',
-  projectId: 'hair-tryon-41cea',
-  storageBucket: 'hair-tryon-41cea.firebasestorage.app',
-  messagingSenderId: '1068244825260',
-  appId: '1:1068244825260:web:cdc6bf57d7b28c7c19db09',
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
 // Uygulama zaten başlatılmışsa tekrar başlatma
