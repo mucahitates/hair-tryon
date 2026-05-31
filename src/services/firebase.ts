@@ -1,12 +1,11 @@
 // Firebase başlatma dosyası
 // Auth, Firestore ve Storage instance'larını dışa aktarır
-// Tüm servis dosyaları buradan import eder
-// KRİTİK: initializeAuth değil getAuth kullanıyoruz
-// Değerler .env dosyasından EXPO_PUBLIC_ prefix ile okunur
-// EXPO_PUBLIC_ prefix'i olmayan değerler client'ta görünmez
+// Firebase 9.23.0 — getReactNativePersistence auth/react-native'den gelir
 
 import { initializeApp, getApps } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { initializeAuth } from 'firebase/auth';
+import { getReactNativePersistence } from 'firebase/auth/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
@@ -19,17 +18,13 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID,
 };
 
-// Uygulama zaten başlatılmışsa tekrar başlatma
-// React strict mode ve hot reload'da çift başlatmayı önler
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
-// Auth instance — getAuth kullanıyoruz (initializeAuth değil)
-export const auth = getAuth(app);
+export const auth = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
 
-// Firestore instance — tüm veritabanı işlemleri buradan
 export const db = getFirestore(app);
-
-// Storage instance — fotoğraf yükleme işlemleri buradan
 export const storage = getStorage(app);
 
 export default app;

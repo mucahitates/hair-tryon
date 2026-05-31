@@ -76,18 +76,18 @@ export default function RegisterScreen() {
         toValue: 1,
         tension: 50,
         friction: 7,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]),
     ]).start();
@@ -148,19 +148,19 @@ export default function RegisterScreen() {
       Animated.timing(stepSlide, {
         toValue: -500,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(stepSlide, {
         toValue: 500,
         duration: 0,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start(() => {
       setStep(2);
       Animated.timing(stepSlide, {
         toValue: 0,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     });
   };
@@ -171,19 +171,19 @@ export default function RegisterScreen() {
       Animated.timing(stepSlide, {
         toValue: 500,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.timing(stepSlide, {
         toValue: -500,
         duration: 0,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
     ]).start(() => {
       setStep(1);
       Animated.timing(stepSlide, {
         toValue: 0,
         duration: 250,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
     });
   };
@@ -264,7 +264,7 @@ export default function RegisterScreen() {
       Animated.timing(screenOpacity, {
         toValue: 0,
         duration: 400,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }).start();
 
     } catch (error: any) {

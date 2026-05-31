@@ -43,7 +43,13 @@ export default function RootLayout() {
   return (
     <>
       <StatusBar style="light" backgroundColor={COLORS.background} />
-      <Stack screenOptions={{ headerShown: false }}>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: COLORS.background },
+          animation: 'fade',
+        }}
+      >
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(customer)" />

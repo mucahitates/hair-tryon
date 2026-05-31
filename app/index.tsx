@@ -1,11 +1,5 @@
-// Uygulamanın giriş noktası
-// Firebase auth durumuna göre yönlendirme yapar
-// KRİTİK: onAuthStateChanged null gelince HİÇBİR ŞEY YAPMA
-// 5 saniye timeout — çözümlenmezse login'e yönlendir
-// _layout.tsx'deki auth dinleyicisi ile birlikte çalışır
-
 import { useEffect, useRef } from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import { auth } from '../src/services/firebase';
 import { useAuthStore } from '../src/stores/authStore';
@@ -17,39 +11,46 @@ export default function Index() {
   const resolved = useRef(false);
 
   useEffect(() => {
+    console.log('index.tsx useEffect başladı');
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
-      // KRİTİK: resolved true ise tekrar çalışma
+      console.log('onAuthStateChanged tetiklendi:', firebaseUser?.uid ?? 'null');
+
       if (resolved.current) return;
 
       if (firebaseUser) {
         resolved.current = true;
+        console.log('Kullanıcı var, Firestore\'dan çekiliyor...');
         const user = await getUser(firebaseUser.uid);
+        console.log('Firestore kullanıcı:', user?.role ?? 'bulunamadı');
+
         if (user) {
-          // Store'u güncelle
           useAuthStore.setState({
             firebaseUser,
             user,
             isAuthenticated: true,
             isLoading: false,
           });
-          // Role göre yönlendir
           if (user.role === 'customer') {
+            console.log('customer\'a yönlendiriliyor');
             router.replace('/(customer)');
           } else if (user.role === 'hairdresser') {
+            console.log('hairdresser\'a yönlendiriliyor');
             router.replace('/(hairdresser)');
           }
         } else {
-          // Firestore'da kullanıcı yok — login'e gönder
           router.replace('/(auth)/login');
         }
+      } else {
+        // null gelince direkt login'e yönlendir
+        resolved.current = true;
+        router.replace('/(auth)/login');
       }
-      // KRİTİK: null gelince HİÇBİR ŞEY YAPMA
     });
 
-    // 5 saniye içinde çözümlenmezse login'e yönlendir
     const timeout = setTimeout(() => {
       if (!resolved.current) {
         resolved.current = true;
+        console.log('Timeout! login\'e yönlendiriliyor');
         router.replace('/(auth)/login');
       }
     }, 5000);
@@ -60,10 +61,10 @@ export default function Index() {
     };
   }, []);
 
-  // Yönlendirme beklenirken loading göster
   return (
     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: COLORS.background }}>
       <ActivityIndicator size="large" color={COLORS.primary} />
+      <Text style={{ color: COLORS.textPrimary, marginTop: 16 }}>Yükleniyor...</Text>
     </View>
   );
 }

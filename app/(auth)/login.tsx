@@ -23,6 +23,9 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { LinearGradient } from 'expo-linear-gradient';
 import { auth } from '../../src/services/firebase';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import { useAuthStore } from '../../src/stores/authStore';
+import { getUser } from '../../src/services/userService';
+
 
 const { height } = Dimensions.get('window');
 
@@ -54,18 +57,18 @@ export default function LoginScreen() {
         toValue: 1,
         tension: 50,
         friction: 7,
-        useNativeDriver: true,
+        useNativeDriver: false,
       }),
       Animated.parallel([
         Animated.timing(fadeAnim, {
           toValue: 1,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
         Animated.timing(slideAnim, {
           toValue: 0,
           duration: 400,
-          useNativeDriver: true,
+          useNativeDriver: false,
         }),
       ]),
     ]).start();
@@ -149,13 +152,32 @@ export default function LoginScreen() {
     }
     setIsLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password);
-      // Başarılı giriş — ekran fade-out animasyonu
-      Animated.timing(screenOpacity, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }).start();
+      const credential = await signInWithEmailAndPassword(auth, email.trim(), password);
+
+      // Giriş başarılı — kullanıcıyı Firestore'dan çek ve yönlendir
+      const user = await getUser(credential.user.uid);
+      if (user) {
+        useAuthStore.setState({
+          firebaseUser: credential.user,
+          user,
+          isAuthenticated: true,
+          isLoading: false,
+        });
+        // Fade-out animasyonu
+        Animated.timing(screenOpacity, {
+          toValue: 0,
+          duration: 400,
+          useNativeDriver: false,
+        }).start(() => {
+          if (user.role === 'customer') {
+            router.replace('/(customer)');
+          } else if (user.role === 'hairdresser') {
+            router.replace('/(hairdresser)');
+          }
+        });
+      } else {
+        Alert.alert('Hata', 'Kullanıcı bilgileri bulunamadı');
+      }
     } catch (error: any) {
       const message =
         error.code === 'auth/user-not-found' ? 'Kullanıcı bulunamadı' :
@@ -237,6 +259,13 @@ export default function LoginScreen() {
                   onBlur={handlePasswordBlur}
                 />
               </Animated.View>
+              {/* Şifremi unuttum */}
+              <TouchableOpacity
+                style={styles.forgotButton}
+                onPress={() => router.push('/(auth)/forgot-password')}
+              >
+                <Text style={styles.forgotText}>Şifremi Unuttum</Text>
+              </TouchableOpacity>
 
               <TouchableOpacity
                 style={[styles.button, isLoading && styles.buttonDisabled]}
@@ -406,5 +435,13 @@ const styles = StyleSheet.create({
   registerLink: {
     color: COLORS.primary,
     fontWeight: 'bold',
+  },
+  forgotButton: {
+    alignSelf: 'flex-end',
+    marginTop: -SPACING.sm,
+  },
+  forgotText: {
+    color: COLORS.primary,
+    fontSize: FONTS.medium,
   },
 });
