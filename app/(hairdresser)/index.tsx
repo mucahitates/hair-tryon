@@ -1,26 +1,12 @@
-// Kuaför ana ekranı — şimdilik placeholder
-// Login sonrası buraya yönlendirilir
+// app/(hairdresser)/index.tsx — geçici placeholder
+import { View, Text } from 'react-native';
+import { COLORS } from '../../src/constants/theme';
 
-import { View, Text, StyleSheet } from 'react-native';
-import { COLORS, FONTS } from '../../src/constants/theme';
-
-export default function HairdresserHome() {
+export default function HairdresserDashboard() {
   return (
-    <View style={styles.container}>
-      <Text style={styles.text}>Kuaför Ana Ekranı</Text>
+    <View style={{ flex: 1, backgroundColor: COLORS.background, justifyContent: 'center', alignItems: 'center' }}>
+      <Text style={{ color: COLORS.textPrimary, fontSize: 20 }}>Kuaför Paneli 🚀</Text>
+      <Text style={{ color: COLORS.textMuted, marginTop: 8 }}>Yakında...</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  text: {
-    color: COLORS.textPrimary,
-    fontSize: FONTS.large,
-  },
-});
