@@ -85,6 +85,7 @@ const TR_DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
 // ─── GÜN DETAY MODALI ──────────────────────────────────────
+// ─── GÜN DETAY MODALI ──────────────────────────────────────
 function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMessage }: {
   visible: boolean;
   onClose: () => void;
@@ -94,12 +95,14 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
   onMessage: (chatId: string) => void;
 }) {
   const slideAnim = useRef(new Animated.Value(600)).current;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
     } else {
       Animated.timing(slideAnim, { toValue: 600, duration: 250, useNativeDriver: true }).start();
+      setExpandedId(null);
     }
   }, [visible]);
 
@@ -115,7 +118,6 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
         <Animated.View style={[modalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
 
-          {/* Handle */}
           <View style={modalStyles.handle} />
 
           {/* Başlık */}
@@ -154,18 +156,23 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={modalStyles.list}>
             {appointments.sort((a, b) => a.time.localeCompare(b.time)).map((apt) => {
               const statusConf = getStatusConfig(apt.status);
+              const isExpanded = expandedId === apt.id;
+
               return (
                 <View key={apt.id} style={modalStyles.aptCard}>
                   <LinearGradient
                     colors={['rgba(255,255,255,0.07)', 'rgba(255,255,255,0.03)']}
                     style={modalStyles.aptCardGradient}
                   >
-                    {/* Sol renkli çizgi */}
                     <View style={[modalStyles.aptColorBar, { backgroundColor: statusConf.color }]} />
 
                     <View style={modalStyles.aptContent}>
-                      {/* Üst satır */}
-                      <View style={modalStyles.aptTopRow}>
+                      {/* Üst satır — tıklanınca detay açılır */}
+                      <TouchableOpacity
+                        style={modalStyles.aptTopRow}
+                        onPress={() => setExpandedId(isExpanded ? null : apt.id)}
+                        activeOpacity={0.7}
+                      >
                         <View style={modalStyles.aptCustomer}>
                           <LinearGradient
                             colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
@@ -178,13 +185,20 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                             <Text style={modalStyles.aptService}>{apt.service}</Text>
                           </View>
                         </View>
-                        <View style={[modalStyles.statusBadge, { backgroundColor: statusConf.color + '22', borderColor: statusConf.color + '44' }]}>
-                          <Ionicons name={statusConf.icon as any} size={11} color={statusConf.color} />
-                          <Text style={[modalStyles.statusText, { color: statusConf.color }]}>{statusConf.label}</Text>
+                        <View style={modalStyles.aptTopRight}>
+                          <View style={[modalStyles.statusBadge, { backgroundColor: statusConf.color + '22', borderColor: statusConf.color + '44' }]}>
+                            <Ionicons name={statusConf.icon as any} size={11} color={statusConf.color} />
+                            <Text style={[modalStyles.statusText, { color: statusConf.color }]}>{statusConf.label}</Text>
+                          </View>
+                          <Ionicons
+                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
+                            size={16}
+                            color={COLORS.textMuted}
+                          />
                         </View>
-                      </View>
+                      </TouchableOpacity>
 
-                      {/* Orta bilgiler */}
+                      {/* Meta bilgiler — her zaman görünür */}
                       <View style={modalStyles.aptMeta}>
                         <View style={modalStyles.aptMetaItem}>
                           <Ionicons name="time-outline" size={13} color={COLORS.primary} />
@@ -200,17 +214,106 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                         </View>
                       </View>
 
-                      {apt.note && (
-                        <View style={modalStyles.aptNote}>
-                          <Ionicons name="chatbubble-ellipses-outline" size={12} color={COLORS.textMuted} />
-                          <Text style={modalStyles.aptNoteText}>{apt.note}</Text>
+                      {/* ── DETAY BÖLÜMÜ — koşullu inline, modal değil ── */}
+                      {isExpanded && (
+                        <View style={modalStyles.expandedSection}>
+
+                          {/* AI Öncesi / Sonrası */}
+                          <View style={modalStyles.expandedPhotos}>
+                            <View style={modalStyles.expandedPhotoCard}>
+                              <LinearGradient
+                                colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
+                                style={modalStyles.expandedPhoto}
+                              >
+                                <Text style={modalStyles.expandedPhotoEmoji}>{apt.customerEmoji}</Text>
+                                <View style={modalStyles.expandedPhotoLabel}>
+                                  <Text style={modalStyles.expandedPhotoLabelText}>Şu An</Text>
+                                </View>
+                              </LinearGradient>
+                            </View>
+
+                            <View style={modalStyles.expandedArrow}>
+                              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={modalStyles.expandedArrowBg}>
+                                <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
+                              </LinearGradient>
+                              <Text style={modalStyles.expandedArrowLabel}>AI</Text>
+                            </View>
+
+                            <View style={modalStyles.expandedPhotoCard}>
+                              <LinearGradient
+                                colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
+                                style={modalStyles.expandedPhoto}
+                              >
+                                <Text style={modalStyles.expandedPhotoEmoji}>✨</Text>
+                                <View style={[modalStyles.expandedPhotoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
+                                  <Text style={modalStyles.expandedPhotoLabelText}>İstenen</Text>
+                                </View>
+                              </LinearGradient>
+                            </View>
+                          </View>
+
+                          {/* Detay kartı */}
+                          <View style={modalStyles.expandedDetailCard}>
+
+                            {/* Hizmet */}
+                            <View style={modalStyles.expandedDetailRow}>
+                              <View style={modalStyles.expandedDetailIcon}>
+                                <Ionicons name="cut-outline" size={16} color={COLORS.primary} />
+                              </View>
+                              <View style={modalStyles.expandedDetailInfo}>
+                                <Text style={modalStyles.expandedDetailLabel}>Hizmet</Text>
+                                <Text style={modalStyles.expandedDetailValue}>{apt.service}</Text>
+                              </View>
+                            </View>
+
+                            <View style={modalStyles.expandedDivider} />
+
+                            {/* Saat & Süre */}
+                            <View style={modalStyles.expandedDetailRow}>
+                              <View style={modalStyles.expandedDetailIcon}>
+                                <Ionicons name="time-outline" size={16} color={COLORS.primary} />
+                              </View>
+                              <View style={modalStyles.expandedDetailInfo}>
+                                <Text style={modalStyles.expandedDetailLabel}>Saat & Süre</Text>
+                                <Text style={modalStyles.expandedDetailValue}>{apt.time} · {apt.duration} dakika</Text>
+                              </View>
+                            </View>
+
+                            <View style={modalStyles.expandedDivider} />
+
+                            {/* Ücret */}
+                            <View style={modalStyles.expandedDetailRow}>
+                              <View style={modalStyles.expandedDetailIcon}>
+                                <Ionicons name="cash-outline" size={16} color="#34D399" />
+                              </View>
+                              <View style={modalStyles.expandedDetailInfo}>
+                                <Text style={modalStyles.expandedDetailLabel}>Ücret</Text>
+                                <Text style={[modalStyles.expandedDetailValue, { color: '#34D399' }]}>₺{apt.price}</Text>
+                              </View>
+                            </View>
+
+                            {/* Not */}
+                            {apt.note && (
+                              <>
+                                <View style={modalStyles.expandedDivider} />
+                                <View style={modalStyles.expandedDetailRow}>
+                                  <View style={modalStyles.expandedDetailIcon}>
+                                    <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                                  </View>
+                                  <View style={modalStyles.expandedDetailInfo}>
+                                    <Text style={modalStyles.expandedDetailLabel}>Müşteri Notu</Text>
+                                    <Text style={modalStyles.expandedDetailValue}>{apt.note}</Text>
+                                  </View>
+                                </View>
+                              </>
+                            )}
+                          </View>
                         </View>
                       )}
 
-                      {/* Butonlar */}
+                      {/* Aksiyon butonları */}
                       {apt.status !== 'cancelled' && apt.status !== 'completed' && (
                         <View style={modalStyles.aptActions}>
-                          {/* Mesaj at */}
                           <TouchableOpacity
                             style={modalStyles.msgBtn}
                             onPress={() => onMessage(apt.chatId)}
@@ -219,7 +322,6 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                             <Text style={modalStyles.msgBtnText}>Mesaj At</Text>
                           </TouchableOpacity>
 
-                          {/* Onayla — sadece pending için */}
                           {apt.status === 'pending' && (
                             <TouchableOpacity style={modalStyles.confirmBtn}>
                               <LinearGradient
@@ -233,7 +335,6 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                             </TouchableOpacity>
                           )}
 
-                          {/* İptal */}
                           <TouchableOpacity
                             style={modalStyles.cancelBtn}
                             onPress={() => Alert.alert('Randevuyu İptal Et', `${apt.customerName} ile ${apt.time} randevusunu iptal etmek istediğine emin misin?`, [
@@ -297,6 +398,24 @@ const modalStyles = StyleSheet.create({
   confirmBtnText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '700' },
   cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: '#F87171' + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#F87171' + '44' },
   cancelBtnText: { fontSize: FONTS.small, color: '#F87171', fontWeight: '600' },
+  aptTopRight: { alignItems: 'flex-end', gap: 4 },
+  expandedSection: { gap: SPACING.md, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  expandedPhotos: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  expandedPhotoCard: { flex: 1 },
+  expandedPhoto: { aspectRatio: 3 / 4, borderRadius: RADIUS.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, position: 'relative' },
+  expandedPhotoEmoji: { fontSize: 28 },
+  expandedPhotoLabel: { position: 'absolute', bottom: 5, left: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS.sm, paddingVertical: 2, alignItems: 'center' },
+  expandedPhotoLabelText: { fontSize: 9, color: COLORS.white, fontWeight: '800' },
+  expandedArrow: { alignItems: 'center', gap: 3 },
+  expandedArrowBg: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
+  expandedArrowLabel: { fontSize: 8, color: COLORS.primary, fontWeight: 'bold' },
+  expandedDetailCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  expandedDetailRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.sm, gap: SPACING.sm },
+  expandedDetailIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center' },
+  expandedDetailInfo: { flex: 1 },
+  expandedDetailLabel: { fontSize: 10, color: COLORS.textMuted, marginBottom: 1 },
+  expandedDetailValue: { fontSize: FONTS.small, fontWeight: '600', color: COLORS.textPrimary },
+  expandedDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.sm },
 });
 
 // ─── ANA EKRAN ─────────────────────────────────────────────
@@ -661,4 +780,5 @@ const styles = StyleSheet.create({
   upcomingMeta: { flexDirection: 'row', gap: SPACING.md },
   upcomingMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   upcomingMetaText: { fontSize: 11, color: COLORS.textMuted },
+  
 });
