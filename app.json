@@ -38,7 +38,8 @@
           "icon": "./assets/icon.png",
           "color": "#FF5C8A"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "scheme": "hairtryon"
   }
