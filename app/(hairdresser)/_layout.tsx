@@ -204,6 +204,9 @@ function FanMenu() {
 
 // ─── ANA LAYOUT ────────────────────────────────────────────
 export default function HairdresserLayout() {
+  const pathname = usePathname();
+  const isChatScreen = pathname.includes('/chat/');
+
   return (
     <View style={{ flex: 1 }}>
       <Stack screenOptions={{ headerShown: false, animation: 'fade' }}>
@@ -213,10 +216,11 @@ export default function HairdresserLayout() {
         <Stack.Screen name="chats" />
         <Stack.Screen name="portfolio" />
         <Stack.Screen name="profile" />
+        <Stack.Screen name="chat/[chatId]" />
       </Stack>
 
-      {/* Fan menü — tüm ekranlarda görünür */}
-      <FanMenu />
+      {/* Fan menü — chat ekranında gizle */}
+      {!isChatScreen && <FanMenu />}
     </View>
   );
 }
