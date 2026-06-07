@@ -375,7 +375,8 @@ export default function HairdresserDashboard() {
           {/* ── 6. KAMPANYA YARAT ── */}
           <View style={styles.section}>
             <SectionTitle title="Kampanya" icon="megaphone-outline" />
-            <TouchableOpacity style={styles.campaignCard} activeOpacity={0.85}>
+            <TouchableOpacity style={styles.campaignCard} activeOpacity={0.85} 
+            onPress={() => router.push('/(hairdresser)/campaign' as any)}>
               <LinearGradient
                 colors={['#7C3AED', '#A78BFA', '#C4B5FD']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -464,7 +465,8 @@ export default function HairdresserDashboard() {
                 </View>
 
                 {/* Detay butonu */}
-                <TouchableOpacity style={styles.cariDetailBtn}>
+                <TouchableOpacity style={styles.cariDetailBtn}
+                >
                   <Text style={styles.cariDetailBtnText}>Tüm Cari Dökümü Gör</Text>
                   <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
                 </TouchableOpacity>

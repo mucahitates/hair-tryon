@@ -217,6 +217,8 @@ export default function HairdresserLayout() {
         <Stack.Screen name="portfolio" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="chat/[chatId]" />
+        <Stack.Screen name="campaigns" />
+        <Stack.Screen name="campaigns/create" />
       </Stack>
 
       {/* Fan menü — chat ekranında gizle */}
