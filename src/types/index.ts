@@ -14,21 +14,33 @@ export interface User {
   role: UserRole;
   city?: string;
   district?: string;
+  referralCode?: string;
   coinBalance: number;
   pushToken?: string;
   isActive: boolean;
   isBlocked: boolean;
   createdAt: number;
   lastActiveAt: number;
+  settings?: {
+    profileVisible?: boolean;
+    showActivity?: boolean;
+    allowMessages?: boolean;
+    notifications?: {
+      newBid?: boolean;
+      message?: boolean;
+      appointment?: boolean;
+      campaign?: boolean;
+    };
+  };
 }
 
 // ─── MÜŞTERİ PROFİLİ (customerProfiles/{uid}) ───────────────────
 export interface HairDNA {
-  type?: 'straight' | 'wavy' | 'curly' | 'afro';
-  length?: 'short' | 'medium' | 'long' | 'very_long';
-  thickness?: 'thin' | 'medium' | 'thick';
-  condition?: 'healthy' | 'normal' | 'damaged' | 'very_damaged';
-  scalp?: 'normal' | 'oily' | 'dry' | 'sensitive' | 'dandruff';
+  type?: 'straight' | 'wavy' | 'curly' | 'afro' | string;
+  length?: 'short' | 'medium' | 'long' | 'very_long' | string;
+  thickness?: 'thin' | 'medium' | 'thick' | string;
+  condition?: 'healthy' | 'normal' | 'damaged' | 'very_damaged' | string;
+  scalp?: 'normal' | 'oily' | 'dry' | 'sensitive' | 'dandruff' | string;
   allergies?: string[];
   chemicalHistory?: string[];
   preferredStyles?: string[];
@@ -40,7 +52,8 @@ export interface CustomerProfile {
   hairDNA?: HairDNA;
   totalJobs: number;
   totalSpent: number;
-  cancelRate: number;
+  cancelRate: number;  
+  followingCount?: number;
 }
 
 // ─── KUAFÖR PROFİLİ (hairdresserProfiles/{uid}) ─────────────────

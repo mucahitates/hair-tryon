@@ -24,6 +24,20 @@ export interface Job {
   beforePhotoUrl: string | null;
   afterPhotoUrl: string | null;
   createdAt: any;
+  serviceCategory?: string;
+}
+
+export interface JobBid {
+  id?: string;
+  jobId: string;
+  hairdresserId: string;
+  hairdresserName: string;
+  hairdresserEmoji: string;
+  price: number;
+  note: string;
+  status: 'pending' | 'accepted' | 'rejected' | 'withdrawn';
+  chatId: string | null;
+  createdAt: any;
 }
 
 // Yeni iş ilanı oluştur
@@ -49,6 +63,22 @@ export const listenCustomerJobs = (
   return onSnapshot(q, (snap) => {
     const jobs = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Job));
     callback(jobs);
+  });
+};
+
+// Müşterinin ilanına gelen teklifleri dinle
+export const listenJobBids = (
+  jobId: string,
+  callback: (bids: JobBid[]) => void
+) => {
+  const q = query(
+    collection(db, 'bids'),
+    where('jobId', '==', jobId),
+    orderBy('createdAt', 'desc')
+  );
+  return onSnapshot(q, (snap) => {
+    const bids = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as JobBid));
+    callback(bids);
   });
 };
 

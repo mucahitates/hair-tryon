@@ -15,6 +15,8 @@ import {
   TextInput,
   Alert,
   Switch,
+  ActivityIndicator,
+  Share
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,31 +26,14 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
 
+// 🔥 Firebase Importları
+import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
+import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { auth, db, storage } from '../../src/services/firebase';
+import { CustomerProfile, HairDNA, User } from '../../src/types';
+
 const { width } = Dimensions.get('window');
-
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_PROFILE = {
-  totalJobs: 8,
-  totalSpent: 3240,
-  averageRating: 4.7,
-  followingCount: 5,
-  memberSince: 'Ocak 2024',
-  coinBalance: 32,
-  nextReward: 50,
-};
-
-const DUMMY_COIN_TRANSACTIONS = [
-  { id: '1', type: 'earn_job', amount: +8, description: 'Keratin Bakım işlemi', date: '24 Mayıs', emoji: '💼' },
-  { id: '2', type: 'earn_review', amount: +2, description: 'Yorum yazdın', date: '24 Mayıs', emoji: '⭐' },
-  { id: '3', type: 'earn_daily', amount: +1, description: 'Günlük giriş', date: '23 Mayıs', emoji: '🌅' },
-  { id: '4', type: 'spend_discount', amount: -10, description: '₺10 indirim kullandın', date: '15 Mayıs', emoji: '🎁' },
-  { id: '5', type: 'earn_job', amount: +4, description: 'Balayage işlemi', date: '10 Mayıs', emoji: '💼' },
-];
-
-const DUMMY_MY_REVIEWS = [
-  { id: '1', hairdresserName: 'Style Studio', hairdresserEmoji: '👑', service: 'Keratin Bakım', rating: 5, comment: 'Harika bir deneyimdi!', date: '24 Mayıs' },
-  { id: '2', hairdresserName: 'Salon Elegance', hairdresserEmoji: '💇‍♀️', service: 'Balayage', rating: 4, comment: 'Çok profesyonel bir ekip.', date: '10 Mayıs' },
-];
 
 const HAIR_DNA_OPTIONS = {
   type: ['Düz', 'Dalgalı', 'Kıvırcık', 'Afro'],
@@ -121,9 +106,9 @@ const settingStyles = StyleSheet.create({
 });
 
 // ─── MODAL WRAPPER ─────────────────────────────────────────
-function BottomModal({ visible, onClose, title, children, showSave, onSave, saveLabel }: {
+function BottomModal({ visible, onClose, title, children, showSave, onSave, saveLabel, isSaving }: {
   visible: boolean; onClose: () => void; title: string; children: React.ReactNode;
-  showSave?: boolean; onSave?: () => void; saveLabel?: string;
+  showSave?: boolean; onSave?: () => void; saveLabel?: string; isSaving?: boolean;
 }) {
   const slideAnim = useRef(new Animated.Value(400)).current;
 
@@ -141,7 +126,7 @@ function BottomModal({ visible, onClose, title, children, showSave, onSave, save
         <Animated.View style={[modalWrapStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <View style={modalWrapStyles.header}>
             <Text style={modalWrapStyles.title}>{title}</Text>
-            <TouchableOpacity onPress={onClose} style={modalWrapStyles.closeBtn}>
+            <TouchableOpacity onPress={onClose} style={modalWrapStyles.closeBtn} disabled={isSaving}>
               <Ionicons name="close" size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
@@ -151,13 +136,17 @@ function BottomModal({ visible, onClose, title, children, showSave, onSave, save
           </ScrollView>
           {showSave && onSave && (
             <View style={modalWrapStyles.footer}>
-              <TouchableOpacity style={modalWrapStyles.saveBtn} onPress={onSave}>
+              <TouchableOpacity style={modalWrapStyles.saveBtn} onPress={onSave} disabled={isSaving}>
                 <LinearGradient
                   colors={[COLORS.primary, COLORS.primaryDark]}
                   start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={modalWrapStyles.saveBtnGradient}
+                  style={[modalWrapStyles.saveBtnGradient, isSaving && { opacity: 0.7 }]}
                 >
-                  <Text style={modalWrapStyles.saveBtnText}>{saveLabel || 'Kaydet'}</Text>
+                  {isSaving ? (
+                    <ActivityIndicator color={COLORS.white} size="small" />
+                  ) : (
+                    <Text style={modalWrapStyles.saveBtnText}>{saveLabel || 'Kaydet'}</Text>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -176,7 +165,7 @@ const modalWrapStyles = StyleSheet.create({
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
   footer: { padding: SPACING.lg, borderTopWidth: 1, borderTopColor: COLORS.border },
   saveBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
-  saveBtnGradient: { paddingVertical: 14, alignItems: 'center' },
+  saveBtnGradient: { paddingVertical: 14, alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   saveBtnText: { fontSize: FONTS.regular, fontWeight: 'bold', color: COLORS.white },
 });
 
@@ -185,6 +174,7 @@ function HairDNAModal({ visible, onClose, hairDNA, onSave }: {
   visible: boolean; onClose: () => void; hairDNA: any; onSave: (data: any) => void;
 }) {
   const [local, setLocal] = useState(hairDNA);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => { setLocal(hairDNA); }, [hairDNA]);
 
@@ -193,10 +183,17 @@ function HairDNAModal({ visible, onClose, hairDNA, onSave }: {
     thickness: '🔍 Saç Kalınlığı', condition: '✨ Saç Durumu', scalp: '🌿 Kafa Derisi',
   };
 
+  const handleSave = async () => {
+    setIsSaving(true);
+    await onSave(local);
+    setIsSaving(false);
+    onClose();
+  };
+
   return (
     <BottomModal
       visible={visible} onClose={onClose} title="Saç Kimliğim"
-      showSave onSave={() => { onSave(local); onClose(); }} saveLabel="Kaydet"
+      showSave onSave={handleSave} saveLabel="Kaydet" isSaving={isSaving}
     >
       {Object.entries(HAIR_DNA_OPTIONS).map(([key, options]) => (
         <View key={key} style={dnaStyles.section}>
@@ -231,15 +228,32 @@ const dnaStyles = StyleSheet.create({
 });
 
 // ─── PROFİL DÜZENLEME MODALI ───────────────────────────────
-function EditProfileModal({ visible, onClose, user }: {
-  visible: boolean; onClose: () => void; user: any;
+function EditProfileModal({ visible, onClose, user, onSaveProfile }: {
+  visible: boolean; onClose: () => void; user: any; onSaveProfile: (data: any) => Promise<void>;
 }) {
   const [displayName, setDisplayName] = useState(user?.displayName || '');
   const [phone, setPhone] = useState(user?.phone || '');
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
+  const [avatarUri, setAvatarUri] = useState<string | null>(user?.photoURL || null);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (visible) {
+      setDisplayName(user?.displayName || '');
+      setPhone(user?.phone || '');
+      setAvatarUri(user?.photoURL || null);
+    }
+  }, [visible, user]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    await onSaveProfile({ displayName, phone, photoURL: avatarUri });
+    setIsSaving(false);
+    onClose();
+  };
+
   return (
     <BottomModal visible={visible} onClose={onClose} title="Profili Düzenle"
-      showSave onSave={() => { onClose(); }} saveLabel="Kaydet"
+      showSave onSave={handleSave} saveLabel="Kaydet" isSaving={isSaving}
     >
       <View style={editStyles.content}>
         <TouchableOpacity style={editStyles.avatarSection} onPress={async () => {
@@ -249,7 +263,7 @@ function EditProfileModal({ visible, onClose, user }: {
             return;
           }
           const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            mediaTypes: ['images'], // <-- Doğru kullanım bu şekilde
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.8,
@@ -304,8 +318,6 @@ const editStyles = StyleSheet.create({
 });
 
 // ─── ŞİFRE DEĞİŞTİR MODALI ────────────────────────────────
-// Eski şifre + yeni şifre + tekrar kontrolü
-// Firestore: Firebase Auth şifre güncelleme (şimdilik stub)
 function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -314,8 +326,9 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
   const [showNew, setShowNew] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const newErrors: Record<string, string> = {};
     if (!oldPassword) newErrors.old = 'Eski şifre gerekli';
     if (newPassword.length < 6) newErrors.new = 'Yeni şifre en az 6 karakter olmalı';
@@ -326,11 +339,28 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
       setErrors(newErrors);
       return;
     }
-    // TODO: Firebase Auth ile şifre güncelle
-    // await updatePassword(auth.currentUser, newPassword)
-    Alert.alert('Başarılı', 'Şifreniz güncellendi.');
-    setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setErrors({});
-    onClose();
+
+    try {
+      setIsSaving(true);
+      const currentUser = auth.currentUser;
+      if (currentUser && currentUser.email) {
+        const credential = EmailAuthProvider.credential(currentUser.email, oldPassword);
+        await reauthenticateWithCredential(currentUser, credential);
+        await updatePassword(currentUser, newPassword);
+
+        Alert.alert('Başarılı', 'Şifreniz güvenli bir şekilde güncellendi.');
+        setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setErrors({});
+        onClose();
+      }
+    } catch (error: any) {
+      if (error.code === 'auth/wrong-password') {
+        setErrors({ old: 'Eski şifre hatalı' });
+      } else {
+        Alert.alert('Hata', 'Şifre güncellenirken bir sorun oluştu.');
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const InputField = ({ label, value, onChange, show, onToggle, error, placeholder }: any) => (
@@ -356,7 +386,7 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
 
   return (
     <BottomModal visible={visible} onClose={onClose} title="Şifre Değiştir"
-      showSave onSave={handleSave} saveLabel="Güncelle"
+      showSave onSave={handleSave} saveLabel="Güncelle" isSaving={isSaving}
     >
       <View style={pwStyles.content}>
         <InputField
@@ -387,7 +417,6 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
           placeholder="Yeni şifreyi tekrar girin"
         />
 
-        {/* Şifre güçlülük göstergesi */}
         {newPassword.length > 0 && (
           <View style={pwStyles.strengthWrapper}>
             <Text style={pwStyles.strengthLabel}>Şifre Güçlülüğü:</Text>
@@ -426,14 +455,33 @@ const pwStyles = StyleSheet.create({
 });
 
 // ─── GİZLİLİK AYARLARI MODALI ─────────────────────────────
-function PrivacyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const [profileVisible, setProfileVisible] = useState(true);
-  const [showActivity, setShowActivity] = useState(true);
-  const [allowMessages, setAllowMessages] = useState(true);
+function PrivacyModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
+  const [profileVisible, setProfileVisible] = useState(user?.settings?.profileVisible ?? true);
+  const [showActivity, setShowActivity] = useState(user?.settings?.showActivity ?? true);
+  const [allowMessages, setAllowMessages] = useState(user?.settings?.allowMessages ?? true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!user?.uid) return;
+    setIsSaving(true);
+    try {
+      await updateDoc(doc(db, 'users', user.uid), {
+        'settings.profileVisible': profileVisible,
+        'settings.showActivity': showActivity,
+        'settings.allowMessages': allowMessages
+      });
+      Alert.alert('Başarılı', 'Gizlilik ayarlarınız güncellendi.');
+    } catch (error) {
+      Alert.alert('Hata', 'Ayarlar kaydedilemedi.');
+    } finally {
+      setIsSaving(false);
+      onClose();
+    }
+  };
 
   return (
     <BottomModal visible={visible} onClose={onClose} title="Gizlilik Ayarları"
-      showSave onSave={onClose} saveLabel="Kaydet"
+      showSave onSave={handleSave} saveLabel="Kaydet" isSaving={isSaving}
     >
       <View style={privStyles.content}>
         <Text style={privStyles.desc}>
@@ -501,13 +549,22 @@ const privStyles = StyleSheet.create({
 });
 
 // ─── ARKADAŞINI DAVET ET MODALI ────────────────────────────
-function InviteModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const referralCode = 'HAIR-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+function InviteModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
+  const referralCode = user?.referralCode || 'HAIR-PROMO';
+
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `✂️ Hair Tryon uygulamasında saç stilini AI ile denemek harika! Davet kodumu kullanarak üye ol, indirimli coin kazan: ${referralCode}\nUygulamayı hemen indir!`,
+      });
+    } catch (error) {
+      console.error('Paylaşım hatası:', error);
+    }
+  };
 
   return (
     <BottomModal visible={visible} onClose={onClose} title="Arkadaşını Davet Et">
       <View style={inviteStyles.content}>
-        {/* Açıklama */}
         <LinearGradient
           colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
           style={inviteStyles.heroBanner}
@@ -519,18 +576,16 @@ function InviteModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           </Text>
         </LinearGradient>
 
-        {/* Referral kodu */}
         <Text style={inviteStyles.codeLabel}>Davet Kodun</Text>
         <TouchableOpacity
           style={inviteStyles.codeBox}
-          onPress={() => Alert.alert('Kopyalandı!', `${referralCode} kodu kopyalandı.`)}
+          onPress={() => Alert.alert('Kopyalandı!', `${referralCode} kodu panoya kopyalandı.`)}
         >
           <Text style={inviteStyles.codeText}>{referralCode}</Text>
           <Ionicons name="copy-outline" size={20} color={COLORS.primary} />
         </TouchableOpacity>
 
-        {/* Paylaş butonu */}
-        <TouchableOpacity style={inviteStyles.shareBtn}>
+        <TouchableOpacity style={inviteStyles.shareBtn} onPress={handleShare}>
           <LinearGradient
             colors={[COLORS.primary, COLORS.primaryDark]}
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -541,7 +596,6 @@ function InviteModal({ visible, onClose }: { visible: boolean; onClose: () => vo
           </LinearGradient>
         </TouchableOpacity>
 
-        {/* Kurallar */}
         <View style={inviteStyles.rulesCard}>
           <Text style={inviteStyles.rulesTitle}>📋 Kurallar</Text>
           {[
@@ -581,22 +635,37 @@ const inviteStyles = StyleSheet.create({
 });
 
 // ─── ABONELİKLERİM MODALI ──────────────────────────────────
-function SubscriptionsModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function SubscriptionsModal({ visible, onClose, list }: { visible: boolean; onClose: () => void; list: any[] }) {
   return (
     <BottomModal visible={visible} onClose={onClose} title="Aboneliklerim">
       <View style={subStyles.content}>
-        <View style={subStyles.emptyWrapper}>
-          <LinearGradient
-            colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
-            style={subStyles.emptyIcon}
-          >
-            <Ionicons name="card-outline" size={40} color={COLORS.primary} />
-          </LinearGradient>
-          <Text style={subStyles.emptyTitle}>Aktif abonelik yok</Text>
-          <Text style={subStyles.emptyDesc}>
-            Favori kuaföründen aylık paket satın alarak düzenli bakım indirimlerinden yararlanabilirsin.
-          </Text>
-        </View>
+        {list.length === 0 ? (
+          <View style={subStyles.emptyWrapper}>
+            <LinearGradient
+              colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
+              style={subStyles.emptyIcon}
+            >
+              <Ionicons name="card-outline" size={40} color={COLORS.primary} />
+            </LinearGradient>
+            <Text style={subStyles.emptyTitle}>Aktif abonelik yok</Text>
+            <Text style={subStyles.emptyDesc}>
+              Favori kuaförünüzden aylık paket satın alarak düzenli bakım indirimlerinden yararlanabilirsiniz.
+            </Text>
+          </View>
+        ) : (
+          list.map((sub) => (
+            <View key={sub.id} style={subStyles.infoCard}>
+              <View style={subStyles.pkgRow}>
+                <Text style={subStyles.pkgEmoji}>👑</Text>
+                <View style={subStyles.pkgInfo}>
+                  <Text style={subStyles.pkgTitle}>{sub.name || 'Premium Paket'}</Text>
+                  <Text style={subStyles.pkgDesc}>{sub.description || 'Aktif Abonelik'}</Text>
+                  <Text style={{ fontSize: 10, color: COLORS.success, marginTop: 4 }}>Yenilenme Tarihi: {sub.renewDate || 'Aylık'}</Text>
+                </View>
+              </View>
+            </View>
+          ))
+        )}
 
         <View style={subStyles.infoCard}>
           <Text style={subStyles.infoTitle}>Abonelik Avantajları</Text>
@@ -634,7 +703,7 @@ const subStyles = StyleSheet.create({
   pkgDesc: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
 });
 
-// ─── DESTEK MODALLARı ──────────────────────────────────────
+// ─── DESTEK MODALLARI ──────────────────────────────────────
 function HelpModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const faqs = [
     { q: 'Nasıl iş ilanı oluşturabilirim?', a: 'AI Saç ekranından saç modelinizi deneyin ve "İş İlanı Oluştur" butonuna basın.' },
@@ -661,14 +730,41 @@ function HelpModal({ visible, onClose }: { visible: boolean; onClose: () => void
   );
 }
 
-function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+function ContactModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSend = async () => {
+    if (!subject.trim() || !message.trim()) {
+      Alert.alert('Eksik Bilgi', 'Lütfen konu ve mesajınızı yazın.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await addDoc(collection(db, 'supportMessages'), {
+        userId: user?.uid || 'anonymous',
+        userEmail: user?.email || '',
+        subject,
+        message,
+        createdAt: serverTimestamp(),
+        status: 'new'
+      });
+      Alert.alert('Gönderildi', 'Mesajınız başarıyla iletildi, en kısa sürede yanıtlayacağız.');
+      setSubject('');
+      setMessage('');
+      onClose();
+    } catch (error) {
+      Alert.alert('Hata', 'Mesajınız gönderilemedi. Lütfen tekrar deneyin.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <BottomModal visible={visible} onClose={onClose} title="Bize Ulaşın"
-      showSave onSave={() => { Alert.alert('Gönderildi', 'Mesajınız iletildi, en kısa sürede yanıtlayacağız.'); onClose(); }}
-      saveLabel="Gönder"
+      showSave onSave={handleSend} saveLabel="Gönder" isSaving={isSaving}
     >
       <View style={helpStyles.content}>
         <View style={helpStyles.contactInfo}>
@@ -682,7 +778,7 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
             style={helpStyles.input}
             value={subject}
             onChangeText={setSubject}
-            placeholder="Konunuzu yazın..."
+            placeholder="Örn: Uygulama Hatası"
             placeholderTextColor={COLORS.textMuted}
           />
         </View>
@@ -693,7 +789,7 @@ function ContactModal({ visible, onClose }: { visible: boolean; onClose: () => v
             style={[helpStyles.input, { minHeight: 100, textAlignVertical: 'top' }]}
             value={message}
             onChangeText={setMessage}
-            placeholder="Mesajınızı yazın..."
+            placeholder="Detaylı olarak sorununuzu veya önerinizi yazın..."
             placeholderTextColor={COLORS.textMuted}
             multiline
           />
@@ -729,7 +825,7 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
         </View>
 
         <Text style={aboutStyles.legal}>
-          © 2025 Hair Tryon. Tüm hakları saklıdır.
+          © 2026 Hair Tryon. Tüm hakları saklıdır.
         </Text>
       </View>
     </BottomModal>
@@ -765,7 +861,17 @@ const aboutStyles = StyleSheet.create({
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function ProfileScreen() {
   const router = useRouter();
-  const { user, signOut } = useAuthStore();
+  const { user: authUser, signOut } = useAuthStore();
+
+  // Firestore Real-time State'leri
+  const [realUser, setRealUser] = useState<User | null>(null);
+  const [profileData, setProfileData] = useState<CustomerProfile | null>(null);
+  const [coinTransactions, setCoinTransactions] = useState<any[]>([]);
+  const [myReviews, setMyReviews] = useState<any[]>([]);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [hairDNA, setHairDNA] = useState<HairDNA>({
+    type: 'Dalgalı', length: 'Uzun', thickness: 'Orta', condition: 'Normal', scalp: 'Normal',
+  });
 
   // Modal state'leri
   const [showEditProfile, setShowEditProfile] = useState(false);
@@ -786,18 +892,79 @@ export default function ProfileScreen() {
   const [notifAppointment, setNotifAppointment] = useState(true);
   const [notifCampaign, setNotifCampaign] = useState(false);
 
-  // Hair DNA
-  const [hairDNA, setHairDNA] = useState({
-    type: 'Dalgalı', length: 'Uzun', thickness: 'Orta', condition: 'Normal', scalp: 'Normal',
-  });
-
-  // Değerlendirmeler
-  const [myReviews, setMyReviews] = useState(DUMMY_MY_REVIEWS);
-
   // Animasyonlar
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(20)).current;
+
+  // ─── GERÇEK ZAMANLI FİRESTORE DİNLEYİCİLERİ ───
+  useEffect(() => {
+    if (!authUser?.uid) return;
+
+    // 1. Ana Kullanıcı Dinleyici (Referral Code Kontrolü ile)
+    const unsubUser = onSnapshot(doc(db, 'users', authUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as User;
+        setRealUser(data);
+
+        // Eğer veritabanında referralCode yoksa otomatik oluşturup kaydet
+        if (!data.referralCode) {
+          const generatedCode = 'HAIR-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+          updateDoc(doc(db, 'users', authUser.uid), { referralCode: generatedCode });
+        }
+
+        if (data.settings?.notifications) {
+          setNotifNewBid(data.settings.notifications.newBid ?? true);
+          setNotifMessage(data.settings.notifications.message ?? true);
+          setNotifAppointment(data.settings.notifications.appointment ?? true);
+          setNotifCampaign(data.settings.notifications.campaign ?? false);
+        }
+      }
+    });
+
+    // 2. Müşteri Profili Dinleyici
+    const unsubProfile = onSnapshot(doc(db, 'customerProfiles', authUser.uid), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data() as CustomerProfile;
+        setProfileData(data);
+        if (data.hairDNA) {
+          setHairDNA(data.hairDNA);
+        }
+      }
+    });
+
+    // 3. Coin Geçmişi Dinleyici
+    const qCoins = query(
+      collection(db, 'users', authUser.uid, 'coinTransactions'),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubCoins = onSnapshot(qCoins, (snapshot) => {
+      setCoinTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 4. Değerlendirmelerim Dinleyici
+    const qReviews = query(
+      collection(db, 'reviews'),
+      where('customerId', '==', authUser.uid),
+      orderBy('createdAt', 'desc')
+    );
+    const unsubReviews = onSnapshot(qReviews, (snapshot) => {
+      setMyReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    // 5. Aboneliklerim Dinleyici
+    const unsubSubs = onSnapshot(collection(db, 'users', authUser.uid, 'subscriptions'), (snapshot) => {
+      setSubscriptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => {
+      unsubUser();
+      unsubProfile();
+      unsubCoins();
+      unsubReviews();
+      unsubSubs();
+    };
+  }, [authUser?.uid]);
 
   useEffect(() => {
     Animated.parallel([
@@ -807,7 +974,75 @@ export default function ProfileScreen() {
     ]).start();
   }, []);
 
-  const coinProgress = (DUMMY_PROFILE.coinBalance / DUMMY_PROFILE.nextReward) * 100;
+  // ─── PROFİL & FOTOĞRAF YÜKLEME (STORAGE ENTEGRASYONU) ───
+  const handleSaveProfile = async (updatedData: any) => {
+    if (!authUser?.uid) return;
+    try {
+      let finalPhotoURL = updatedData.photoURL;
+
+      // Eğer seçilen fotoğraf yerel bir cihaz URI'si ise Firebase Storage'a yükle
+      if (finalPhotoURL && (finalPhotoURL.startsWith('file://') || finalPhotoURL.startsWith('content://'))) {
+        const response = await fetch(finalPhotoURL);
+        const blob = await response.blob();
+        const storageRef = ref(storage, `avatars/${authUser.uid}`);
+        await uploadBytes(storageRef, blob);
+        finalPhotoURL = await getDownloadURL(storageRef);
+      }
+
+      await updateDoc(doc(db, 'users', authUser.uid), {
+        displayName: updatedData.displayName,
+        phone: updatedData.phone,
+        photoURL: finalPhotoURL
+      });
+      Alert.alert('Başarılı', 'Profiliniz ve fotoğrafınız güncellendi.');
+    } catch (error) {
+      console.error('Profil Güncelleme Hatası:', error);
+      Alert.alert('Hata', 'Profil güncellenirken bir sorun oluştu.');
+    }
+  };
+
+  const handleSaveHairDNA = async (newDNA: HairDNA) => {
+    if (!authUser?.uid) return;
+    try {
+      await updateDoc(doc(db, 'customerProfiles', authUser.uid), { hairDNA: newDNA });
+      Alert.alert('Başarılı', 'Saç kimliğiniz güncellendi.');
+    } catch (error) {
+      Alert.alert('Hata', 'Kaydedilirken bir hata oluştu.');
+    }
+  };
+
+  const handleNotificationSwitch = async (key: string, value: boolean) => {
+    if (!authUser?.uid) return;
+    if (key === 'newBid') setNotifNewBid(value);
+    if (key === 'message') setNotifMessage(value);
+    if (key === 'appointment') setNotifAppointment(value);
+    if (key === 'campaign') setNotifCampaign(value);
+
+    try {
+      await updateDoc(doc(db, 'users', authUser.uid), {
+        [`settings.notifications.${key}`]: value
+      });
+    } catch (error) {
+      console.error('Bildirim ayarı kaydedilemedi', error);
+    }
+  };
+
+  const handleDeleteReview = (id: string) => {
+    Alert.alert('Yorumu Sil', 'Bu yorumu silmek istediğine emin misin?', [
+      { text: 'İptal', style: 'cancel' },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'reviews', id));
+          } catch (error) {
+            Alert.alert('Hata', 'Yorum silinemedi.');
+          }
+        }
+      },
+    ]);
+  };
 
   const handleSignOut = async () => {
     Alert.alert('Çıkış Yap', 'Hesabından çıkmak istediğine emin misin?', [
@@ -816,13 +1051,19 @@ export default function ProfileScreen() {
     ]);
   };
 
-  // Değerlendirme sil
-  const handleDeleteReview = (id: string) => {
-    Alert.alert('Yorumu Sil', 'Bu yorumu silmek istediğine emin misin?', [
-      { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => setMyReviews(prev => prev.filter(r => r.id !== id)) },
-    ]);
+  const displayUser = realUser || authUser;
+  const userCoinBalance = displayUser?.coinBalance || 0;
+  const nextRewardTarget = 50;
+  const coinProgress = (userCoinBalance / nextRewardTarget) * 100;
+
+  const formatDate = (timestamp?: any) => {
+    if (!timestamp) return 'Yeni Üye';
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+    return `${months[date.getMonth()]} ${date.getFullYear()}`;
   };
+
+  const allowedDNAKeys = ['type', 'length', 'thickness', 'condition', 'scalp'];
 
   return (
     <View style={styles.container}>
@@ -843,27 +1084,31 @@ export default function ProfileScreen() {
             style={styles.profileCardGradient}
           >
             <TouchableOpacity style={styles.avatarWrapper} onPress={() => setShowEditProfile(true)}>
-              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
-                <Text style={styles.avatarText}>{user?.displayName?.[0]?.toUpperCase() || '👤'}</Text>
-              </LinearGradient>
+              {displayUser?.photoURL ? (
+                <Image source={{ uri: displayUser.photoURL }} style={styles.avatar} />
+              ) : (
+                <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
+                  <Text style={styles.avatarText}>{displayUser?.displayName?.[0]?.toUpperCase() || '👤'}</Text>
+                </LinearGradient>
+              )}
               <View style={styles.avatarEditBadge}>
                 <Ionicons name="camera" size={12} color={COLORS.white} />
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.displayName}>{user?.displayName}</Text>
-            <Text style={styles.email}>{user?.email}</Text>
+            <Text style={styles.displayName}>{displayUser?.displayName || 'Kullanıcı'}</Text>
+            <Text style={styles.email}>{displayUser?.email || 'email@adres.com'}</Text>
 
             <View style={styles.profileMeta}>
-              {user?.city && (
+              {displayUser?.city && (
                 <View style={styles.metaItem}>
                   <Ionicons name="location-outline" size={13} color={COLORS.textMuted} />
-                  <Text style={styles.metaText}>{user.city}</Text>
+                  <Text style={styles.metaText}>{displayUser.city}</Text>
                 </View>
               )}
               <View style={styles.metaItem}>
                 <Ionicons name="calendar-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.metaText}>Üye: {DUMMY_PROFILE.memberSince}</Text>
+                <Text style={styles.metaText}>Üye: {formatDate(displayUser?.createdAt)}</Text>
               </View>
             </View>
 
@@ -879,10 +1124,10 @@ export default function ProfileScreen() {
           {/* ── İSTATİSTİKLER ── */}
           <View style={styles.statsGrid}>
             {[
-              { label: 'Toplam İş', value: DUMMY_PROFILE.totalJobs, icon: 'briefcase-outline', color: COLORS.primary },
-              { label: 'Harcama', value: `₺${DUMMY_PROFILE.totalSpent}`, icon: 'cash-outline', color: '#34D399' },
-              { label: 'Puan', value: DUMMY_PROFILE.averageRating, icon: 'star-outline', color: '#FFB844' },
-              { label: 'Takip', value: DUMMY_PROFILE.followingCount, icon: 'people-outline', color: '#A78BFA' },
+              { label: 'Toplam İş', value: profileData?.totalJobs || 0, icon: 'briefcase-outline', color: COLORS.primary },
+              { label: 'Harcama', value: `₺${profileData?.totalSpent || 0}`, icon: 'cash-outline', color: '#34D399' },
+              { label: 'İptal Oranı', value: `%${profileData?.cancelRate || 0}`, icon: 'close-circle-outline', color: '#F87171' },
+              { label: 'Takip', value: profileData?.followingCount || 0, icon: 'people-outline', color: '#A78BFA' },
             ].map((stat) => (
               <View key={stat.label} style={styles.statCard}>
                 <LinearGradient colors={[stat.color + '22', stat.color + '11']} style={styles.statCardGradient}>
@@ -903,20 +1148,20 @@ export default function ProfileScreen() {
                   <View style={styles.coinLeft}>
                     <Text style={styles.coinEmoji}>🪙</Text>
                     <View>
-                      <Text style={styles.coinBalance}>{DUMMY_PROFILE.coinBalance}</Text>
+                      <Text style={styles.coinBalance}>{userCoinBalance}</Text>
                       <Text style={styles.coinLabel}>Coin</Text>
                     </View>
                   </View>
                   <View style={styles.coinRight}>
                     <Text style={styles.coinRewardLabel}>Sonraki ödül</Text>
-                    <Text style={styles.coinReward}>{DUMMY_PROFILE.nextReward - DUMMY_PROFILE.coinBalance} coin kaldı</Text>
+                    <Text style={styles.coinReward}>{Math.max(0, nextRewardTarget - userCoinBalance)} coin kaldı</Text>
                   </View>
                 </View>
                 <View style={styles.coinProgressWrapper}>
                   <View style={styles.coinProgressBg}>
                     <View style={[styles.coinProgressFill, { width: `${Math.min(coinProgress, 100)}%` }]} />
                   </View>
-                  <Text style={styles.coinProgressText}>{DUMMY_PROFILE.coinBalance}/{DUMMY_PROFILE.nextReward} = ₺50 indirim</Text>
+                  <Text style={styles.coinProgressText}>{userCoinBalance}/{nextRewardTarget} = ₺50 indirim</Text>
                 </View>
                 <View style={styles.coinEarnRow}>
                   {[
@@ -936,25 +1181,26 @@ export default function ProfileScreen() {
           </View>
 
           {/* ── SAÇ KİMLİĞİ ── */}
-          {/* Düzenleme butonu sadece kutu içinde */}
           <View style={styles.section}>
             <SectionTitle title="Saç Kimliğim" icon="sparkles-outline" />
             <TouchableOpacity style={styles.hairDNACard} onPress={() => setShowHairDNA(true)} activeOpacity={0.85}>
               <LinearGradient colors={[COLORS.primary + '22', COLORS.primaryDark + '11']} style={styles.hairDNAGradient}>
                 <View style={styles.hairDNAGrid}>
                   {Object.entries(hairDNA).map(([key, value]) => {
+                    if (!allowedDNAKeys.includes(key) || !value) return null;
+
                     const icons: Record<string, string> = { type: '💧', length: '📏', thickness: '🔍', condition: '✨', scalp: '🌿' };
                     const labels: Record<string, string> = { type: 'Tip', length: 'Uzunluk', thickness: 'Kalınlık', condition: 'Durum', scalp: 'Kafa Derisi' };
+
                     return (
                       <View key={key} style={styles.hairDNAItem}>
-                        <Text style={styles.hairDNAEmoji}>{icons[key]}</Text>
-                        <Text style={styles.hairDNALabel}>{labels[key]}</Text>
-                        <Text style={styles.hairDNAValue}>{value}</Text>
+                        <Text style={styles.hairDNAEmoji}>{icons[key] || '🏷️'}</Text>
+                        <Text style={styles.hairDNALabel}>{labels[key] || key}</Text>
+                        <Text style={styles.hairDNAValue}>{String(value)}</Text>
                       </View>
                     );
                   })}
                 </View>
-                {/* Düzenle hint sadece kutu içinde */}
                 <View style={styles.hairDNAEditHint}>
                   <Ionicons name="pencil-outline" size={13} color={COLORS.primary} />
                   <Text style={styles.hairDNAEditText}>Düzenlemek için dokun</Text>
@@ -971,7 +1217,7 @@ export default function ProfileScreen() {
                 <View key={review.id} style={styles.reviewCard}>
                   <View style={styles.reviewHeader}>
                     <View style={styles.reviewAvatar}>
-                      <Text style={styles.reviewAvatarEmoji}>{review.hairdresserEmoji}</Text>
+                      <Text style={styles.reviewAvatarEmoji}>{review.hairdresserEmoji || '✂️'}</Text>
                     </View>
                     <View style={styles.reviewInfo}>
                       <Text style={styles.reviewHairdresser}>{review.hairdresserName}</Text>
@@ -983,12 +1229,15 @@ export default function ProfileScreen() {
                           <Ionicons key={star} name={star <= review.rating ? 'star' : 'star-outline'} size={12} color="#FFB844" />
                         ))}
                       </View>
-                      <Text style={styles.reviewDate}>{review.date}</Text>
+                      <Text style={styles.reviewDate}>{formatDate(review.createdAt)}</Text>
                     </View>
                   </View>
                   <Text style={styles.reviewComment}>{review.comment}</Text>
                 </View>
               ))}
+              {myReviews.length === 0 && (
+                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small, textAlign: 'center' }}>Henüz değerlendirme bulunmuyor.</Text>
+              )}
             </View>
           </View>
 
@@ -996,10 +1245,10 @@ export default function ProfileScreen() {
           <View style={styles.section}>
             <SectionTitle title="Bildirimler" icon="notifications-outline" />
             <View style={styles.settingsCard}>
-              <SettingRow icon="pricetag-outline" label="Yeni Teklif" isSwitch switchValue={notifNewBid} onSwitch={setNotifNewBid} showArrow={false} />
-              <SettingRow icon="chatbubble-outline" label="Yeni Mesaj" isSwitch switchValue={notifMessage} onSwitch={setNotifMessage} showArrow={false} />
-              <SettingRow icon="calendar-outline" label="Randevu Hatırlatma" isSwitch switchValue={notifAppointment} onSwitch={setNotifAppointment} showArrow={false} />
-              <SettingRow icon="megaphone-outline" label="Kampanyalar" isSwitch switchValue={notifCampaign} onSwitch={setNotifCampaign} showArrow={false} />
+              <SettingRow icon="pricetag-outline" label="Yeni Teklif" isSwitch switchValue={notifNewBid} onSwitch={(v) => handleNotificationSwitch('newBid', v)} showArrow={false} />
+              <SettingRow icon="chatbubble-outline" label="Yeni Mesaj" isSwitch switchValue={notifMessage} onSwitch={(v) => handleNotificationSwitch('message', v)} showArrow={false} />
+              <SettingRow icon="calendar-outline" label="Randevu Hatırlatma" isSwitch switchValue={notifAppointment} onSwitch={(v) => handleNotificationSwitch('appointment', v)} showArrow={false} />
+              <SettingRow icon="megaphone-outline" label="Kampanyalar" isSwitch switchValue={notifCampaign} onSwitch={(v) => handleNotificationSwitch('campaign', v)} showArrow={false} />
             </View>
           </View>
 
@@ -1037,35 +1286,42 @@ export default function ProfileScreen() {
       </ScrollView>
 
       {/* ── MODALLAR ── */}
-      <EditProfileModal visible={showEditProfile} onClose={() => setShowEditProfile(false)} user={user} />
-      <HairDNAModal visible={showHairDNA} onClose={() => setShowHairDNA(false)} hairDNA={hairDNA} onSave={setHairDNA} />
+      <EditProfileModal visible={showEditProfile} onClose={() => setShowEditProfile(false)} user={displayUser} onSaveProfile={handleSaveProfile} />
+      <HairDNAModal visible={showHairDNA} onClose={() => setShowHairDNA(false)} hairDNA={hairDNA} onSave={handleSaveHairDNA} />
       <ChangePasswordModal visible={showChangePassword} onClose={() => setShowChangePassword(false)} />
-      <PrivacyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
-      <InviteModal visible={showInvite} onClose={() => setShowInvite(false)} />
-      <SubscriptionsModal visible={showSubscriptions} onClose={() => setShowSubscriptions(false)} />
+      <PrivacyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} user={displayUser} />
+      <InviteModal visible={showInvite} onClose={() => setShowInvite(false)} user={displayUser} />
+      <SubscriptionsModal visible={showSubscriptions} onClose={() => setShowSubscriptions(false)} list={subscriptions} />
       <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
-      <ContactModal visible={showContact} onClose={() => setShowContact(false)} />
+      <ContactModal visible={showContact} onClose={() => setShowContact(false)} user={displayUser} />
       <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} />
 
       {/* Coin geçmişi modalı */}
       <BottomModal visible={showCoinHistory} onClose={() => setShowCoinHistory(false)} title="Coin Geçmişi">
-        {DUMMY_COIN_TRANSACTIONS.map((tx) => (
-          <View key={tx.id} style={coinStyles.txRow}>
-            <View style={coinStyles.txIcon}>
-              <Text style={{ fontSize: 20 }}>{tx.emoji}</Text>
-            </View>
-            <View style={coinStyles.txInfo}>
-              <Text style={coinStyles.txDesc}>{tx.description}</Text>
-              <Text style={coinStyles.txDate}>{tx.date}</Text>
-            </View>
-            <Text style={[coinStyles.txAmount, { color: tx.amount > 0 ? COLORS.success : COLORS.error }]}>
-              {tx.amount > 0 ? '+' : ''}{tx.amount} 🪙
-            </Text>
+        {coinTransactions.length === 0 ? (
+          <View style={{ alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
+            <Ionicons name="wallet-outline" size={40} color={COLORS.textMuted} />
+            <Text style={{ color: COLORS.textSecondary, fontSize: FONTS.regular }}>Henüz coin hareketiniz yok.</Text>
           </View>
-        ))}
+        ) : (
+          coinTransactions.map((tx) => (
+            <View key={tx.id} style={coinStyles.txRow}>
+              <View style={coinStyles.txIcon}>
+                <Text style={{ fontSize: 20 }}>{tx.emoji || '🪙'}</Text>
+              </View>
+              <View style={coinStyles.txInfo}>
+                <Text style={coinStyles.txDesc}>{tx.description}</Text>
+                <Text style={coinStyles.txDate}>{formatDate(tx.createdAt)}</Text>
+              </View>
+              <Text style={[coinStyles.txAmount, { color: tx.amount > 0 ? COLORS.success : COLORS.error }]}>
+                {tx.amount > 0 ? '+' : ''}{tx.amount} 🪙
+              </Text>
+            </View>
+          ))
+        )}
       </BottomModal>
 
-      {/* Değerlendirmeler modalı — silme özelliği ile */}
+      {/* Değerlendirmeler modalı */}
       <BottomModal visible={showReviews} onClose={() => setShowReviews(false)} title="Değerlendirmelerim">
         {myReviews.length === 0 ? (
           <View style={{ alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
@@ -1077,7 +1333,7 @@ export default function ProfileScreen() {
             <View key={review.id} style={[styles.reviewCard, { marginHorizontal: SPACING.lg, marginBottom: SPACING.sm }]}>
               <View style={styles.reviewHeader}>
                 <View style={styles.reviewAvatar}>
-                  <Text style={styles.reviewAvatarEmoji}>{review.hairdresserEmoji}</Text>
+                  <Text style={styles.reviewAvatarEmoji}>{review.hairdresserEmoji || '✂️'}</Text>
                 </View>
                 <View style={styles.reviewInfo}>
                   <Text style={styles.reviewHairdresser}>{review.hairdresserName}</Text>
@@ -1089,7 +1345,6 @@ export default function ProfileScreen() {
                       <Ionicons key={star} name={star <= review.rating ? 'star' : 'star-outline'} size={12} color="#FFB844" />
                     ))}
                   </View>
-                  {/* Sil butonu */}
                   <TouchableOpacity
                     onPress={() => handleDeleteReview(review.id)}
                     style={reviewDeleteStyles.deleteBtn}
