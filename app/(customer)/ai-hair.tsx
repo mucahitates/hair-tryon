@@ -377,7 +377,13 @@ export default function AIHairScreen() {
         {/* Geri butonu — adım 1'de tab bar'a döner, diğerlerinde önceki adıma */}
         <TouchableOpacity
           style={styles.headerBtn}
-          onPress={step === 1 ? () => router.back() : handleBack}
+          onPress={step === 1 ? () => {
+            if (router.canGoBack()) {
+              router.back();
+            } else {
+              router.replace('/(customer)' as any);
+            }
+          } : handleBack}
         >
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
@@ -1208,7 +1214,7 @@ const styles = StyleSheet.create({
   comparisonCard: {
     flex: 1,
     gap: 20,
-    
+
   },
   comparisonLabel: {
     fontSize: 25,

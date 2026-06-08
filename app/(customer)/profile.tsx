@@ -4,19 +4,9 @@
 
 import { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  Modal,
-  TextInput,
-  Alert,
-  Switch,
-  ActivityIndicator,
-  Share
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, Dimensions, Modal, TextInput, Alert, Switch,
+  ActivityIndicator, Share
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,8 +15,6 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import * as ImagePicker from 'expo-image-picker';
 import { Image } from 'react-native';
-
-// 🔥 Firebase Importları
 import { doc, getDoc, updateDoc, collection, query, where, onSnapshot, orderBy, addDoc, serverTimestamp, deleteDoc } from 'firebase/firestore';
 import { updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -41,9 +29,9 @@ const HAIR_DNA_OPTIONS = {
   thickness: ['İnce', 'Orta', 'Kalın'],
   condition: ['Sağlıklı', 'Normal', 'Hasarlı', 'Çok Hasarlı'],
   scalp: ['Normal', 'Yağlı', 'Kuru', 'Hassas', 'Kepekli'],
+  allergies: ['Boya Alerjisi', 'Keratin Alerjisi', 'Perma Alerjisi', 'Yok'],
+  preferredStyles: ['Balayage', 'Ombre', 'Wolf Cut', 'Bob', 'Pixie', 'Uzun Düz'],
 };
-
-// ─── YARDIMCI BİLEŞENLER ──────────────────────────────────
 
 function SectionTitle({ title, icon, action, onAction }: {
   title: string; icon: string; action?: string; onAction?: () => void;
@@ -105,7 +93,6 @@ const settingStyles = StyleSheet.create({
   value: { fontSize: FONTS.small, color: COLORS.textMuted },
 });
 
-// ─── MODAL WRAPPER ─────────────────────────────────────────
 function BottomModal({ visible, onClose, title, children, showSave, onSave, saveLabel, isSaving }: {
   visible: boolean; onClose: () => void; title: string; children: React.ReactNode;
   showSave?: boolean; onSave?: () => void; saveLabel?: string; isSaving?: boolean;
@@ -169,7 +156,6 @@ const modalWrapStyles = StyleSheet.create({
   saveBtnText: { fontSize: FONTS.regular, fontWeight: 'bold', color: COLORS.white },
 });
 
-// ─── HAIR DNA MODALI ───────────────────────────────────────
 function HairDNAModal({ visible, onClose, hairDNA, onSave }: {
   visible: boolean; onClose: () => void; hairDNA: any; onSave: (data: any) => void;
 }) {
@@ -191,8 +177,7 @@ function HairDNAModal({ visible, onClose, hairDNA, onSave }: {
   };
 
   return (
-    <BottomModal
-      visible={visible} onClose={onClose} title="Saç Kimliğim"
+    <BottomModal visible={visible} onClose={onClose} title="Saç Kimliğim"
       showSave onSave={handleSave} saveLabel="Kaydet" isSaving={isSaving}
     >
       {Object.entries(HAIR_DNA_OPTIONS).map(([key, options]) => (
@@ -227,7 +212,6 @@ const dnaStyles = StyleSheet.create({
   chipTextActive: { color: COLORS.primary, fontWeight: '700' },
 });
 
-// ─── PROFİL DÜZENLEME MODALI ───────────────────────────────
 function EditProfileModal({ visible, onClose, user, onSaveProfile }: {
   visible: boolean; onClose: () => void; user: any; onSaveProfile: (data: any) => Promise<void>;
 }) {
@@ -263,7 +247,7 @@ function EditProfileModal({ visible, onClose, user, onSaveProfile }: {
             return;
           }
           const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ['images'], // <-- Doğru kullanım bu şekilde
+            mediaTypes: ['images'] as any,
             allowsEditing: true,
             aspect: [1, 1],
             quality: 0.8,
@@ -317,7 +301,6 @@ const editStyles = StyleSheet.create({
   input: { flex: 1, paddingVertical: SPACING.md, color: COLORS.textPrimary, fontSize: FONTS.regular },
 });
 
-// ─── ŞİFRE DEĞİŞTİR MODALI ────────────────────────────────
 function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -334,12 +317,7 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
     if (newPassword.length < 6) newErrors.new = 'Yeni şifre en az 6 karakter olmalı';
     if (newPassword !== confirmPassword) newErrors.confirm = 'Şifreler uyuşmuyor';
     if (newPassword === oldPassword) newErrors.new = 'Yeni şifre eski şifreyle aynı olamaz';
-
-    if (Object.keys(newErrors).length > 0) {
-      setErrors(newErrors);
-      return;
-    }
-
+    if (Object.keys(newErrors).length > 0) { setErrors(newErrors); return; }
     try {
       setIsSaving(true);
       const currentUser = auth.currentUser;
@@ -347,7 +325,6 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
         const credential = EmailAuthProvider.credential(currentUser.email, oldPassword);
         await reauthenticateWithCredential(currentUser, credential);
         await updatePassword(currentUser, newPassword);
-
         Alert.alert('Başarılı', 'Şifreniz güvenli bir şekilde güncellendi.');
         setOldPassword(''); setNewPassword(''); setConfirmPassword(''); setErrors({});
         onClose();
@@ -389,34 +366,9 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
       showSave onSave={handleSave} saveLabel="Güncelle" isSaving={isSaving}
     >
       <View style={pwStyles.content}>
-        <InputField
-          label="Eski Şifre"
-          value={oldPassword}
-          onChange={setOldPassword}
-          show={showOld}
-          onToggle={() => setShowOld(!showOld)}
-          error={errors.old}
-          placeholder="Mevcut şifreniz"
-        />
-        <InputField
-          label="Yeni Şifre"
-          value={newPassword}
-          onChange={setNewPassword}
-          show={showNew}
-          onToggle={() => setShowNew(!showNew)}
-          error={errors.new}
-          placeholder="En az 6 karakter"
-        />
-        <InputField
-          label="Yeni Şifre Tekrar"
-          value={confirmPassword}
-          onChange={setConfirmPassword}
-          show={showConfirm}
-          onToggle={() => setShowConfirm(!showConfirm)}
-          error={errors.confirm}
-          placeholder="Yeni şifreyi tekrar girin"
-        />
-
+        <InputField label="Eski Şifre" value={oldPassword} onChange={setOldPassword} show={showOld} onToggle={() => setShowOld(!showOld)} error={errors.old} placeholder="Mevcut şifreniz" />
+        <InputField label="Yeni Şifre" value={newPassword} onChange={setNewPassword} show={showNew} onToggle={() => setShowNew(!showNew)} error={errors.new} placeholder="En az 6 karakter" />
+        <InputField label="Yeni Şifre Tekrar" value={confirmPassword} onChange={setConfirmPassword} show={showConfirm} onToggle={() => setShowConfirm(!showConfirm)} error={errors.confirm} placeholder="Yeni şifreyi tekrar girin" />
         {newPassword.length > 0 && (
           <View style={pwStyles.strengthWrapper}>
             <Text style={pwStyles.strengthLabel}>Şifre Güçlülüğü:</Text>
@@ -424,12 +376,7 @@ function ChangePasswordModal({ visible, onClose }: { visible: boolean; onClose: 
               {[1, 2, 3, 4].map((level) => {
                 const strength = newPassword.length < 6 ? 1 : newPassword.length < 8 ? 2 : /[A-Z]/.test(newPassword) && /[0-9]/.test(newPassword) ? 4 : 3;
                 const colors = ['#F87171', '#FFB844', '#34D399', '#A78BFA'];
-                return (
-                  <View
-                    key={level}
-                    style={[pwStyles.strengthBar, { backgroundColor: level <= strength ? colors[strength - 1] : 'rgba(255,255,255,0.1)' }]}
-                  />
-                );
+                return <View key={level} style={[pwStyles.strengthBar, { backgroundColor: level <= strength ? colors[strength - 1] : 'rgba(255,255,255,0.1)' }]} />;
               })}
             </View>
           </View>
@@ -443,173 +390,43 @@ const pwStyles = StyleSheet.create({
   content: { padding: SPACING.lg, gap: SPACING.md },
   fieldWrapper: { gap: SPACING.xs },
   label: { fontSize: FONTS.small, color: COLORS.textMuted, fontWeight: '600' },
-  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1.5, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md },
+  inputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, paddingHorizontal: SPACING.md },
   inputError: { borderColor: COLORS.error },
   input: { flex: 1, paddingVertical: SPACING.md, color: COLORS.textPrimary, fontSize: FONTS.regular },
   eyeBtn: { padding: SPACING.sm },
-  errorText: { fontSize: FONTS.small, color: COLORS.error, marginTop: 2 },
-  strengthWrapper: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginTop: SPACING.sm },
+  errorText: { fontSize: FONTS.small, color: COLORS.error },
+  strengthWrapper: { gap: SPACING.xs },
   strengthLabel: { fontSize: FONTS.small, color: COLORS.textMuted },
-  strengthBars: { flex: 1, flexDirection: 'row', gap: 4 },
-  strengthBar: { flex: 1, height: 6, borderRadius: RADIUS.full },
+  strengthBars: { flexDirection: 'row', gap: SPACING.xs },
+  strengthBar: { flex: 1, height: 4, borderRadius: 2 },
 });
 
-// ─── GİZLİLİK AYARLARI MODALI ─────────────────────────────
-function PrivacyModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
-  const [profileVisible, setProfileVisible] = useState(user?.settings?.profileVisible ?? true);
-  const [showActivity, setShowActivity] = useState(user?.settings?.showActivity ?? true);
-  const [allowMessages, setAllowMessages] = useState(user?.settings?.allowMessages ?? true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (!user?.uid) return;
-    setIsSaving(true);
-    try {
-      await updateDoc(doc(db, 'users', user.uid), {
-        'settings.profileVisible': profileVisible,
-        'settings.showActivity': showActivity,
-        'settings.allowMessages': allowMessages
-      });
-      Alert.alert('Başarılı', 'Gizlilik ayarlarınız güncellendi.');
-    } catch (error) {
-      Alert.alert('Hata', 'Ayarlar kaydedilemedi.');
-    } finally {
-      setIsSaving(false);
-      onClose();
-    }
-  };
-
-  return (
-    <BottomModal visible={visible} onClose={onClose} title="Gizlilik Ayarları"
-      showSave onSave={handleSave} saveLabel="Kaydet" isSaving={isSaving}
-    >
-      <View style={privStyles.content}>
-        <Text style={privStyles.desc}>
-          Bu ayarlar profilinizin ve aktivitelerinizin başkaları tarafından görünürlüğünü kontrol eder.
-        </Text>
-
-        <View style={privStyles.card}>
-          <View style={privStyles.row}>
-            <View style={privStyles.rowLeft}>
-              <Ionicons name="person-outline" size={18} color={COLORS.primary} />
-              <View>
-                <Text style={privStyles.rowTitle}>Profilimi Herkese Göster</Text>
-                <Text style={privStyles.rowDesc}>Kuaförler profilinizi görebilir</Text>
-              </View>
-            </View>
-            <Switch value={profileVisible} onValueChange={setProfileVisible}
-              trackColor={{ false: COLORS.border, true: COLORS.primary + '88' }}
-              thumbColor={profileVisible ? COLORS.primary : COLORS.textMuted} />
-          </View>
-
-          <View style={privStyles.divider} />
-
-          <View style={privStyles.row}>
-            <View style={privStyles.rowLeft}>
-              <Ionicons name="eye-outline" size={18} color={COLORS.primary} />
-              <View>
-                <Text style={privStyles.rowTitle}>Aktivitemi Göster</Text>
-                <Text style={privStyles.rowDesc}>Son görülme zamanı gösterilir</Text>
-              </View>
-            </View>
-            <Switch value={showActivity} onValueChange={setShowActivity}
-              trackColor={{ false: COLORS.border, true: COLORS.primary + '88' }}
-              thumbColor={showActivity ? COLORS.primary : COLORS.textMuted} />
-          </View>
-
-          <View style={privStyles.divider} />
-
-          <View style={privStyles.row}>
-            <View style={privStyles.rowLeft}>
-              <Ionicons name="chatbubble-outline" size={18} color={COLORS.primary} />
-              <View>
-                <Text style={privStyles.rowTitle}>Mesaj Almaya İzin Ver</Text>
-                <Text style={privStyles.rowDesc}>Sadece iş ilanı olan kuaförler</Text>
-              </View>
-            </View>
-            <Switch value={allowMessages} onValueChange={setAllowMessages}
-              trackColor={{ false: COLORS.border, true: COLORS.primary + '88' }}
-              thumbColor={allowMessages ? COLORS.primary : COLORS.textMuted} />
-          </View>
-        </View>
-      </View>
-    </BottomModal>
-  );
-}
-
-const privStyles = StyleSheet.create({
-  content: { padding: SPACING.lg, gap: SPACING.md },
-  desc: { fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 20 },
-  card: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, gap: SPACING.md },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
-  rowTitle: { fontSize: FONTS.regular, fontWeight: '600', color: COLORS.textPrimary },
-  rowDesc: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
-  divider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
-});
-
-// ─── ARKADAŞINI DAVET ET MODALI ────────────────────────────
 function InviteModal({ visible, onClose, user }: { visible: boolean; onClose: () => void; user: any }) {
   const referralCode = user?.referralCode || 'HAIR-PROMO';
-
   const handleShare = async () => {
     try {
-      await Share.share({
-        message: `✂️ Hair Tryon uygulamasında saç stilini AI ile denemek harika! Davet kodumu kullanarak üye ol, indirimli coin kazan: ${referralCode}\nUygulamayı hemen indir!`,
-      });
-    } catch (error) {
-      console.error('Paylaşım hatası:', error);
-    }
+      await Share.share({ message: `✂️ Hair Tryon uygulamasında saç stilini AI ile dene! Davet kodum: ${referralCode}` });
+    } catch (error) { }
   };
-
   return (
     <BottomModal visible={visible} onClose={onClose} title="Arkadaşını Davet Et">
       <View style={inviteStyles.content}>
-        <LinearGradient
-          colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
-          style={inviteStyles.heroBanner}
-        >
+        <LinearGradient colors={[COLORS.primary + '22', COLORS.primaryDark + '11']} style={inviteStyles.heroBanner}>
           <Text style={inviteStyles.heroEmoji}>🎁</Text>
           <Text style={inviteStyles.heroTitle}>Her davet = +10 Coin!</Text>
-          <Text style={inviteStyles.heroDesc}>
-            Arkadaşın ilk işini tamamladığında sen 10 coin, arkadaşın 5 coin kazanır.
-          </Text>
+          <Text style={inviteStyles.heroDesc}>Arkadaşın ilk işini tamamladığında sen 10 coin, arkadaşın 5 coin kazanır.</Text>
         </LinearGradient>
-
         <Text style={inviteStyles.codeLabel}>Davet Kodun</Text>
-        <TouchableOpacity
-          style={inviteStyles.codeBox}
-          onPress={() => Alert.alert('Kopyalandı!', `${referralCode} kodu panoya kopyalandı.`)}
-        >
+        <TouchableOpacity style={inviteStyles.codeBox} onPress={() => Alert.alert('Kopyalandı!', `${referralCode} kodu kopyalandı.`)}>
           <Text style={inviteStyles.codeText}>{referralCode}</Text>
           <Ionicons name="copy-outline" size={20} color={COLORS.primary} />
         </TouchableOpacity>
-
         <TouchableOpacity style={inviteStyles.shareBtn} onPress={handleShare}>
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={inviteStyles.shareBtnGradient}
-          >
+          <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={inviteStyles.shareBtnGradient}>
             <Ionicons name="share-outline" size={20} color={COLORS.white} />
             <Text style={inviteStyles.shareBtnText}>Paylaş</Text>
           </LinearGradient>
         </TouchableOpacity>
-
-        <View style={inviteStyles.rulesCard}>
-          <Text style={inviteStyles.rulesTitle}>📋 Kurallar</Text>
-          {[
-            'Arkadaşın uygulamaya kayıt olmalı',
-            'İlk işini tamamlamalı',
-            'Coin 30 gün içinde hesabına geçer',
-            'Sınırsız davet yapabilirsin',
-          ].map((rule, i) => (
-            <View key={i} style={inviteStyles.ruleRow}>
-              <View style={inviteStyles.ruleDot} />
-              <Text style={inviteStyles.ruleText}>{rule}</Text>
-            </View>
-          ))}
-        </View>
       </View>
     </BottomModal>
   );
@@ -627,30 +444,19 @@ const inviteStyles = StyleSheet.create({
   shareBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
   shareBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 14 },
   shareBtnText: { fontSize: FONTS.regular, fontWeight: 'bold', color: COLORS.white },
-  rulesCard: { backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.sm },
-  rulesTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
-  ruleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  ruleDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.primary },
-  ruleText: { fontSize: FONTS.small, color: COLORS.textSecondary },
 });
 
-// ─── ABONELİKLERİM MODALI ──────────────────────────────────
 function SubscriptionsModal({ visible, onClose, list }: { visible: boolean; onClose: () => void; list: any[] }) {
   return (
     <BottomModal visible={visible} onClose={onClose} title="Aboneliklerim">
       <View style={subStyles.content}>
         {list.length === 0 ? (
           <View style={subStyles.emptyWrapper}>
-            <LinearGradient
-              colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
-              style={subStyles.emptyIcon}
-            >
+            <LinearGradient colors={[COLORS.primary + '22', COLORS.primaryDark + '11']} style={subStyles.emptyIcon}>
               <Ionicons name="card-outline" size={40} color={COLORS.primary} />
             </LinearGradient>
             <Text style={subStyles.emptyTitle}>Aktif abonelik yok</Text>
-            <Text style={subStyles.emptyDesc}>
-              Favori kuaförünüzden aylık paket satın alarak düzenli bakım indirimlerinden yararlanabilirsiniz.
-            </Text>
+            <Text style={subStyles.emptyDesc}>Favori kuaförünüzden aylık paket satın alarak indirimlerden yararlanabilirsiniz.</Text>
           </View>
         ) : (
           list.map((sub) => (
@@ -660,29 +466,11 @@ function SubscriptionsModal({ visible, onClose, list }: { visible: boolean; onCl
                 <View style={subStyles.pkgInfo}>
                   <Text style={subStyles.pkgTitle}>{sub.name || 'Premium Paket'}</Text>
                   <Text style={subStyles.pkgDesc}>{sub.description || 'Aktif Abonelik'}</Text>
-                  <Text style={{ fontSize: 10, color: COLORS.success, marginTop: 4 }}>Yenilenme Tarihi: {sub.renewDate || 'Aylık'}</Text>
                 </View>
               </View>
             </View>
           ))
         )}
-
-        <View style={subStyles.infoCard}>
-          <Text style={subStyles.infoTitle}>Abonelik Avantajları</Text>
-          {[
-            { emoji: '💇', title: 'Aylık Kesim Paketi', desc: 'Ayda 1 kesim + fön' },
-            { emoji: '✨', title: 'Aylık Bakım Paketi', desc: 'Ayda 1 bakım + maske' },
-            { emoji: '👑', title: 'Premium Paket', desc: 'Tüm hizmetlerde %20 indirim' },
-          ].map((pkg, i) => (
-            <View key={i} style={subStyles.pkgRow}>
-              <Text style={subStyles.pkgEmoji}>{pkg.emoji}</Text>
-              <View style={subStyles.pkgInfo}>
-                <Text style={subStyles.pkgTitle}>{pkg.title}</Text>
-                <Text style={subStyles.pkgDesc}>{pkg.desc}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
       </View>
     </BottomModal>
   );
@@ -695,7 +483,6 @@ const subStyles = StyleSheet.create({
   emptyTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textSecondary },
   emptyDesc: { fontSize: FONTS.regular, color: COLORS.textMuted, textAlign: 'center', lineHeight: 22 },
   infoCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md, gap: SPACING.md },
-  infoTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: SPACING.sm },
   pkgRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
   pkgEmoji: { fontSize: 28 },
   pkgInfo: { flex: 1 },
@@ -703,15 +490,13 @@ const subStyles = StyleSheet.create({
   pkgDesc: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
 });
 
-// ─── DESTEK MODALLARI ──────────────────────────────────────
 function HelpModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const faqs = [
-    { q: 'Nasıl iş ilanı oluşturabilirim?', a: 'AI Saç ekranından saç modelinizi deneyin ve "İş İlanı Oluştur" butonuna basın.' },
+    { q: 'Nasıl iş ilanı oluşturabilirim?', a: 'İşlerim ekranından "+" butonuna basın.' },
     { q: 'Coin nasıl kazanabilirim?', a: 'İş tamamlama, yorum yazma, arkadaş daveti ve günlük giriş ile coin kazanabilirsiniz.' },
     { q: 'Randevumu nasıl iptal ederim?', a: 'Randevularım sekmesinden ilgili randevuyu bulun ve "İptal Et" butonuna basın.' },
     { q: 'Kuaföre nasıl mesaj atabilirim?', a: 'Kuaför profilindeki "Mesaj At" butonuna veya Sohbetler sekmesine gidin.' },
   ];
-
   return (
     <BottomModal visible={visible} onClose={onClose} title="Yardım Merkezi">
       <View style={helpStyles.content}>
@@ -736,63 +521,34 @@ function ContactModal({ visible, onClose, user }: { visible: boolean; onClose: (
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSend = async () => {
-    if (!subject.trim() || !message.trim()) {
-      Alert.alert('Eksik Bilgi', 'Lütfen konu ve mesajınızı yazın.');
-      return;
-    }
-
+    if (!subject.trim() || !message.trim()) { Alert.alert('Eksik Bilgi', 'Lütfen konu ve mesajınızı yazın.'); return; }
     setIsSaving(true);
     try {
       await addDoc(collection(db, 'supportMessages'), {
-        userId: user?.uid || 'anonymous',
-        userEmail: user?.email || '',
-        subject,
-        message,
-        createdAt: serverTimestamp(),
-        status: 'new'
+        userId: user?.uid || 'anonymous', userEmail: user?.email || '',
+        subject, message, createdAt: serverTimestamp(), status: 'new'
       });
-      Alert.alert('Gönderildi', 'Mesajınız başarıyla iletildi, en kısa sürede yanıtlayacağız.');
-      setSubject('');
-      setMessage('');
-      onClose();
+      Alert.alert('Gönderildi', 'Mesajınız iletildi.');
+      setSubject(''); setMessage(''); onClose();
     } catch (error) {
-      Alert.alert('Hata', 'Mesajınız gönderilemedi. Lütfen tekrar deneyin.');
-    } finally {
-      setIsSaving(false);
-    }
+      Alert.alert('Hata', 'Mesajınız gönderilemedi.');
+    } finally { setIsSaving(false); }
   };
 
   return (
-    <BottomModal visible={visible} onClose={onClose} title="Bize Ulaşın"
-      showSave onSave={handleSend} saveLabel="Gönder" isSaving={isSaving}
-    >
+    <BottomModal visible={visible} onClose={onClose} title="Bize Ulaşın" showSave onSave={handleSend} saveLabel="Gönder" isSaving={isSaving}>
       <View style={helpStyles.content}>
         <View style={helpStyles.contactInfo}>
           <Ionicons name="mail-outline" size={20} color={COLORS.primary} />
           <Text style={helpStyles.contactText}>destek@hairtryon.com</Text>
         </View>
-
         <Text style={helpStyles.inputLabel}>Konu</Text>
         <View style={helpStyles.inputWrapper}>
-          <TextInput
-            style={helpStyles.input}
-            value={subject}
-            onChangeText={setSubject}
-            placeholder="Örn: Uygulama Hatası"
-            placeholderTextColor={COLORS.textMuted}
-          />
+          <TextInput style={helpStyles.input} value={subject} onChangeText={setSubject} placeholder="Örn: Uygulama Hatası" placeholderTextColor={COLORS.textMuted} />
         </View>
-
         <Text style={helpStyles.inputLabel}>Mesaj</Text>
         <View style={[helpStyles.inputWrapper, { alignItems: 'flex-start' }]}>
-          <TextInput
-            style={[helpStyles.input, { minHeight: 100, textAlignVertical: 'top' }]}
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Detaylı olarak sorununuzu veya önerinizi yazın..."
-            placeholderTextColor={COLORS.textMuted}
-            multiline
-          />
+          <TextInput style={[helpStyles.input, { minHeight: 100, textAlignVertical: 'top' }]} value={message} onChangeText={setMessage} placeholder="Sorununuzu detaylı yazın..." placeholderTextColor={COLORS.textMuted} multiline />
         </View>
       </View>
     </BottomModal>
@@ -810,7 +566,6 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
           <Text style={aboutStyles.appName}>Hair Tryon</Text>
           <Text style={aboutStyles.version}>Versiyon 1.0.0</Text>
         </View>
-
         <View style={aboutStyles.infoCard}>
           {[
             { label: 'Versiyon', value: '1.0.0' },
@@ -823,10 +578,7 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
             </View>
           ))}
         </View>
-
-        <Text style={aboutStyles.legal}>
-          © 2026 Hair Tryon. Tüm hakları saklıdır.
-        </Text>
+        <Text style={aboutStyles.legal}>© 2026 Hair Tryon. Tüm hakları saklıdır.</Text>
       </View>
     </BottomModal>
   );
@@ -858,12 +610,10 @@ const aboutStyles = StyleSheet.create({
   legal: { fontSize: FONTS.small, color: COLORS.textMuted, textAlign: 'center' },
 });
 
-// ─── ANA EKRAN ─────────────────────────────────────────────
 export default function ProfileScreen() {
   const router = useRouter();
   const { user: authUser, signOut } = useAuthStore();
 
-  // Firestore Real-time State'leri
   const [realUser, setRealUser] = useState<User | null>(null);
   const [profileData, setProfileData] = useState<CustomerProfile | null>(null);
   const [coinTransactions, setCoinTransactions] = useState<any[]>([]);
@@ -873,97 +623,70 @@ export default function ProfileScreen() {
     type: 'Dalgalı', length: 'Uzun', thickness: 'Orta', condition: 'Normal', scalp: 'Normal',
   });
 
-  // Modal state'leri
   const [showEditProfile, setShowEditProfile] = useState(false);
   const [showHairDNA, setShowHairDNA] = useState(false);
   const [showCoinHistory, setShowCoinHistory] = useState(false);
   const [showReviews, setShowReviews] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showPrivacy, setShowPrivacy] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showSubscriptions, setShowSubscriptions] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showContact, setShowContact] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
-  // Bildirim ayarları
   const [notifNewBid, setNotifNewBid] = useState(true);
   const [notifMessage, setNotifMessage] = useState(true);
   const [notifAppointment, setNotifAppointment] = useState(true);
   const [notifCampaign, setNotifCampaign] = useState(false);
 
-  // Animasyonlar
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(20)).current;
 
-  // ─── GERÇEK ZAMANLI FİRESTORE DİNLEYİCİLERİ ───
   useEffect(() => {
     if (!authUser?.uid) return;
 
-    // 1. Ana Kullanıcı Dinleyici (Referral Code Kontrolü ile)
     const unsubUser = onSnapshot(doc(db, 'users', authUser.uid), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as User;
         setRealUser(data);
-
-        // Eğer veritabanında referralCode yoksa otomatik oluşturup kaydet
         if (!data.referralCode) {
-          const generatedCode = 'HAIR-' + Math.random().toString(36).substring(2, 8).toUpperCase();
-          updateDoc(doc(db, 'users', authUser.uid), { referralCode: generatedCode });
+          const code = 'HAIR-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+          updateDoc(doc(db, 'users', authUser.uid), { referralCode: code });
         }
-
-        if (data.settings?.notifications) {
-          setNotifNewBid(data.settings.notifications.newBid ?? true);
-          setNotifMessage(data.settings.notifications.message ?? true);
-          setNotifAppointment(data.settings.notifications.appointment ?? true);
-          setNotifCampaign(data.settings.notifications.campaign ?? false);
+        const notifs = (data as any).settings?.notifications;
+        if (notifs) {
+          setNotifNewBid(notifs.newBid ?? true);
+          setNotifMessage(notifs.message ?? true);
+          setNotifAppointment(notifs.appointment ?? true);
+          setNotifCampaign(notifs.campaign ?? false);
         }
       }
     });
 
-    // 2. Müşteri Profili Dinleyici
     const unsubProfile = onSnapshot(doc(db, 'customerProfiles', authUser.uid), (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as CustomerProfile;
         setProfileData(data);
-        if (data.hairDNA) {
-          setHairDNA(data.hairDNA);
-        }
+        if (data.hairDNA) setHairDNA(data.hairDNA);
       }
     });
 
-    // 3. Coin Geçmişi Dinleyici
-    const qCoins = query(
-      collection(db, 'users', authUser.uid, 'coinTransactions'),
-      orderBy('createdAt', 'desc')
-    );
+    const qCoins = query(collection(db, 'users', authUser.uid, 'coinTransactions'), orderBy('createdAt', 'desc'));
     const unsubCoins = onSnapshot(qCoins, (snapshot) => {
       setCoinTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 4. Değerlendirmelerim Dinleyici
-    const qReviews = query(
-      collection(db, 'reviews'),
-      where('customerId', '==', authUser.uid),
-      orderBy('createdAt', 'desc')
-    );
+    const qReviews = query(collection(db, 'reviews'), where('customerId', '==', authUser.uid), orderBy('createdAt', 'desc'));
     const unsubReviews = onSnapshot(qReviews, (snapshot) => {
       setMyReviews(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    // 5. Aboneliklerim Dinleyici
     const unsubSubs = onSnapshot(collection(db, 'users', authUser.uid, 'subscriptions'), (snapshot) => {
       setSubscriptions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    return () => {
-      unsubUser();
-      unsubProfile();
-      unsubCoins();
-      unsubReviews();
-      unsubSubs();
-    };
+    return () => { unsubUser(); unsubProfile(); unsubCoins(); unsubReviews(); unsubSubs(); };
   }, [authUser?.uid]);
 
   useEffect(() => {
@@ -974,13 +697,10 @@ export default function ProfileScreen() {
     ]).start();
   }, []);
 
-  // ─── PROFİL & FOTOĞRAF YÜKLEME (STORAGE ENTEGRASYONU) ───
   const handleSaveProfile = async (updatedData: any) => {
     if (!authUser?.uid) return;
     try {
       let finalPhotoURL = updatedData.photoURL;
-
-      // Eğer seçilen fotoğraf yerel bir cihaz URI'si ise Firebase Storage'a yükle
       if (finalPhotoURL && (finalPhotoURL.startsWith('file://') || finalPhotoURL.startsWith('content://'))) {
         const response = await fetch(finalPhotoURL);
         const blob = await response.blob();
@@ -988,15 +708,13 @@ export default function ProfileScreen() {
         await uploadBytes(storageRef, blob);
         finalPhotoURL = await getDownloadURL(storageRef);
       }
-
       await updateDoc(doc(db, 'users', authUser.uid), {
         displayName: updatedData.displayName,
         phone: updatedData.phone,
-        photoURL: finalPhotoURL
+        photoURL: finalPhotoURL,
       });
-      Alert.alert('Başarılı', 'Profiliniz ve fotoğrafınız güncellendi.');
+      Alert.alert('Başarılı', 'Profiliniz güncellendi.');
     } catch (error) {
-      console.error('Profil Güncelleme Hatası:', error);
       Alert.alert('Hata', 'Profil güncellenirken bir sorun oluştu.');
     }
   };
@@ -1017,30 +735,15 @@ export default function ProfileScreen() {
     if (key === 'message') setNotifMessage(value);
     if (key === 'appointment') setNotifAppointment(value);
     if (key === 'campaign') setNotifCampaign(value);
-
     try {
-      await updateDoc(doc(db, 'users', authUser.uid), {
-        [`settings.notifications.${key}`]: value
-      });
-    } catch (error) {
-      console.error('Bildirim ayarı kaydedilemedi', error);
-    }
+      await updateDoc(doc(db, 'users', authUser.uid), { [`settings.notifications.${key}`]: value });
+    } catch (error) { }
   };
 
   const handleDeleteReview = (id: string) => {
     Alert.alert('Yorumu Sil', 'Bu yorumu silmek istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Sil',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await deleteDoc(doc(db, 'reviews', id));
-          } catch (error) {
-            Alert.alert('Hata', 'Yorum silinemedi.');
-          }
-        }
-      },
+      { text: 'Sil', style: 'destructive', onPress: async () => { try { await deleteDoc(doc(db, 'reviews', id)); } catch { Alert.alert('Hata', 'Yorum silinemedi.'); } } },
     ]);
   };
 
@@ -1052,7 +755,7 @@ export default function ProfileScreen() {
   };
 
   const displayUser = realUser || authUser;
-  const userCoinBalance = displayUser?.coinBalance || 0;
+  const userCoinBalance = (displayUser as any)?.coinBalance || 0;
   const nextRewardTarget = 50;
   const coinProgress = (userCoinBalance / nextRewardTarget) * 100;
 
@@ -1062,27 +765,19 @@ export default function ProfileScreen() {
     const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
     return `${months[date.getMonth()]} ${date.getFullYear()}`;
   };
-
-  const allowedDNAKeys = ['type', 'length', 'thickness', 'condition', 'scalp'];
+  const allowedDNAKeys = ['type', 'length', 'thickness', 'condition', 'scalp', 'allergies', 'preferredStyles'];
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
-        start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.orb1} />
       <View style={styles.orb2} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
 
-        {/* ── PROFİL KARTI ── */}
+        {/* PROFİL KARTI */}
         <Animated.View style={[styles.profileCard, { opacity: headerAnim }]}>
-          <LinearGradient
-            colors={[COLORS.primaryDark + '44', COLORS.primary + '22']}
-            style={styles.profileCardGradient}
-          >
+          <LinearGradient colors={[COLORS.primaryDark + '44', COLORS.primary + '22']} style={styles.profileCardGradient}>
             <TouchableOpacity style={styles.avatarWrapper} onPress={() => setShowEditProfile(true)}>
               {displayUser?.photoURL ? (
                 <Image source={{ uri: displayUser.photoURL }} style={styles.avatar} />
@@ -1095,10 +790,8 @@ export default function ProfileScreen() {
                 <Ionicons name="camera" size={12} color={COLORS.white} />
               </View>
             </TouchableOpacity>
-
             <Text style={styles.displayName}>{displayUser?.displayName || 'Kullanıcı'}</Text>
-            <Text style={styles.email}>{displayUser?.email || 'email@adres.com'}</Text>
-
+            <Text style={styles.email}>{displayUser?.email || ''}</Text>
             <View style={styles.profileMeta}>
               {displayUser?.city && (
                 <View style={styles.metaItem}>
@@ -1108,10 +801,9 @@ export default function ProfileScreen() {
               )}
               <View style={styles.metaItem}>
                 <Ionicons name="calendar-outline" size={13} color={COLORS.textMuted} />
-                <Text style={styles.metaText}>Üye: {formatDate(displayUser?.createdAt)}</Text>
+                <Text style={styles.metaText}>Üye: {formatDate((displayUser as any)?.createdAt)}</Text>
               </View>
             </View>
-
             <TouchableOpacity style={styles.editBtn} onPress={() => setShowEditProfile(true)}>
               <Ionicons name="pencil-outline" size={14} color={COLORS.primary} />
               <Text style={styles.editBtnText}>Profili Düzenle</Text>
@@ -1121,7 +813,7 @@ export default function ProfileScreen() {
 
         <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentAnim }] }}>
 
-          {/* ── İSTATİSTİKLER ── */}
+          {/* İSTATİSTİKLER */}
           <View style={styles.statsGrid}>
             {[
               { label: 'Toplam İş', value: profileData?.totalJobs || 0, icon: 'briefcase-outline', color: COLORS.primary },
@@ -1139,7 +831,7 @@ export default function ProfileScreen() {
             ))}
           </View>
 
-          {/* ── COİN SİSTEMİ ── */}
+          {/* COİN */}
           <View style={styles.section}>
             <SectionTitle title="Coin Bakiyem" icon="wallet-outline" action="Geçmiş" onAction={() => setShowCoinHistory(true)} />
             <View style={styles.coinCard}>
@@ -1159,7 +851,7 @@ export default function ProfileScreen() {
                 </View>
                 <View style={styles.coinProgressWrapper}>
                   <View style={styles.coinProgressBg}>
-                    <View style={[styles.coinProgressFill, { width: `${Math.min(coinProgress, 100)}%` }]} />
+                    <View style={[styles.coinProgressFill, { width: `${Math.min(coinProgress, 100)}%` as any }]} />
                   </View>
                   <Text style={styles.coinProgressText}>{userCoinBalance}/{nextRewardTarget} = ₺50 indirim</Text>
                 </View>
@@ -1180,7 +872,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── SAÇ KİMLİĞİ ── */}
+          {/* SAÇ KİMLİĞİ */}
           <View style={styles.section}>
             <SectionTitle title="Saç Kimliğim" icon="sparkles-outline" />
             <TouchableOpacity style={styles.hairDNACard} onPress={() => setShowHairDNA(true)} activeOpacity={0.85}>
@@ -1188,10 +880,8 @@ export default function ProfileScreen() {
                 <View style={styles.hairDNAGrid}>
                   {Object.entries(hairDNA).map(([key, value]) => {
                     if (!allowedDNAKeys.includes(key) || !value) return null;
-
-                    const icons: Record<string, string> = { type: '💧', length: '📏', thickness: '🔍', condition: '✨', scalp: '🌿' };
-                    const labels: Record<string, string> = { type: 'Tip', length: 'Uzunluk', thickness: 'Kalınlık', condition: 'Durum', scalp: 'Kafa Derisi' };
-
+                    const icons: Record<string, string> = { type: '💧', length: '📏', thickness: '🔍', condition: '✨', scalp: '🌿', allergies: '⚠️', preferredStyles: '✂️' };
+                    const labels: Record<string, string> = { type: 'Tip', length: 'Uzunluk', thickness: 'Kalınlık', condition: 'Durum', scalp: 'Kafa Derisi', allergies: 'Alerji', preferredStyles: 'Tercih' };
                     return (
                       <View key={key} style={styles.hairDNAItem}>
                         <Text style={styles.hairDNAEmoji}>{icons[key] || '🏷️'}</Text>
@@ -1209,7 +899,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* ── DEĞERLENDİRMELERİM ── */}
+          {/* DEĞERLENDİRMELER */}
           <View style={styles.section}>
             <SectionTitle title="Değerlendirmelerim" icon="star-outline" action="Tümünü Gör" onAction={() => setShowReviews(true)} />
             <View style={styles.reviewsList}>
@@ -1241,7 +931,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── BİLDİRİM AYARLARI ── */}
+          {/* BİLDİRİMLER */}
           <View style={styles.section}>
             <SectionTitle title="Bildirimler" icon="notifications-outline" />
             <View style={styles.settingsCard}>
@@ -1252,18 +942,18 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── HESAP ── */}
+          {/* HESAP */}
           <View style={styles.section}>
             <SectionTitle title="Hesap" icon="person-outline" />
             <View style={styles.settingsCard}>
-              <SettingRow icon="shield-checkmark-outline" label="Gizlilik Ayarları" onPress={() => setShowPrivacy(true)} />
+              <SettingRow icon="shield-checkmark-outline" label="Gizlilik Ayarları" onPress={() => Alert.alert('Yakında', 'Gizlilik ayarları yakında aktif olacak.')} />
               <SettingRow icon="lock-closed-outline" label="Şifre Değiştir" onPress={() => setShowChangePassword(true)} />
               <SettingRow icon="people-outline" label="Arkadaşını Davet Et" value="+10 coin" onPress={() => setShowInvite(true)} />
               <SettingRow icon="card-outline" label="Aboneliklerim" onPress={() => setShowSubscriptions(true)} />
             </View>
           </View>
 
-          {/* ── DESTEK ── */}
+          {/* DESTEK */}
           <View style={styles.section}>
             <SectionTitle title="Destek" icon="help-circle-outline" />
             <View style={styles.settingsCard}>
@@ -1274,7 +964,7 @@ export default function ProfileScreen() {
             </View>
           </View>
 
-          {/* ── ÇIKIŞ YAP ── */}
+          {/* ÇIKIŞ */}
           <View style={[styles.section, { marginBottom: SPACING.xxl }]}>
             <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
               <Ionicons name="log-out-outline" size={20} color={COLORS.error} />
@@ -1285,18 +975,15 @@ export default function ProfileScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* ── MODALLAR ── */}
       <EditProfileModal visible={showEditProfile} onClose={() => setShowEditProfile(false)} user={displayUser} onSaveProfile={handleSaveProfile} />
       <HairDNAModal visible={showHairDNA} onClose={() => setShowHairDNA(false)} hairDNA={hairDNA} onSave={handleSaveHairDNA} />
       <ChangePasswordModal visible={showChangePassword} onClose={() => setShowChangePassword(false)} />
-      <PrivacyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} user={displayUser} />
       <InviteModal visible={showInvite} onClose={() => setShowInvite(false)} user={displayUser} />
       <SubscriptionsModal visible={showSubscriptions} onClose={() => setShowSubscriptions(false)} list={subscriptions} />
       <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
       <ContactModal visible={showContact} onClose={() => setShowContact(false)} user={displayUser} />
       <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} />
 
-      {/* Coin geçmişi modalı */}
       <BottomModal visible={showCoinHistory} onClose={() => setShowCoinHistory(false)} title="Coin Geçmişi">
         {coinTransactions.length === 0 ? (
           <View style={{ alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
@@ -1306,9 +993,7 @@ export default function ProfileScreen() {
         ) : (
           coinTransactions.map((tx) => (
             <View key={tx.id} style={coinStyles.txRow}>
-              <View style={coinStyles.txIcon}>
-                <Text style={{ fontSize: 20 }}>{tx.emoji || '🪙'}</Text>
-              </View>
+              <View style={coinStyles.txIcon}><Text style={{ fontSize: 20 }}>{tx.emoji || '🪙'}</Text></View>
               <View style={coinStyles.txInfo}>
                 <Text style={coinStyles.txDesc}>{tx.description}</Text>
                 <Text style={coinStyles.txDate}>{formatDate(tx.createdAt)}</Text>
@@ -1321,7 +1006,6 @@ export default function ProfileScreen() {
         )}
       </BottomModal>
 
-      {/* Değerlendirmeler modalı */}
       <BottomModal visible={showReviews} onClose={() => setShowReviews(false)} title="Değerlendirmelerim">
         {myReviews.length === 0 ? (
           <View style={{ alignItems: 'center', padding: SPACING.xl, gap: SPACING.md }}>
@@ -1345,10 +1029,7 @@ export default function ProfileScreen() {
                       <Ionicons key={star} name={star <= review.rating ? 'star' : 'star-outline'} size={12} color="#FFB844" />
                     ))}
                   </View>
-                  <TouchableOpacity
-                    onPress={() => handleDeleteReview(review.id)}
-                    style={reviewDeleteStyles.deleteBtn}
-                  >
+                  <TouchableOpacity onPress={() => handleDeleteReview(review.id)} style={reviewDeleteStyles.deleteBtn}>
                     <Ionicons name="trash-outline" size={14} color={COLORS.error} />
                     <Text style={reviewDeleteStyles.deleteText}>Sil</Text>
                   </TouchableOpacity>
@@ -1359,23 +1040,12 @@ export default function ProfileScreen() {
           ))
         )}
       </BottomModal>
-
     </View>
   );
 }
 
 const reviewDeleteStyles = StyleSheet.create({
-  deleteBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-    backgroundColor: COLORS.error + '18',
-    paddingVertical: 3,
-    paddingHorizontal: 8,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: COLORS.error + '44',
-  },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.error + '18', paddingVertical: 3, paddingHorizontal: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.error + '44' },
   deleteText: { fontSize: 10, color: COLORS.error, fontWeight: '700' },
 });
 
