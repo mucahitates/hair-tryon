@@ -2,7 +2,7 @@
 // Üst koyu kavis: 6 ikon barı
 // Alt mor kavis: tıklanabilir AI Saç butonu (Tabs dışında absolute katman)
 
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs, useRouter,usePathname } from 'expo-router';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity } from 'react-native';
 import { useRef, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -134,8 +134,10 @@ const tabStyles = StyleSheet.create({
 // Alttaki mor kavisli AI butonu — tıklanabilir, Tabs dışında
 function AICurveButton() {
   const router = useRouter();
+  const pathname = usePathname();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
+  if (pathname.includes('/chat/')) return null; // Chat ekranındayken gizle
   return (
     <View style={aiStyles.layer} pointerEvents="box-none">
       <TouchableOpacity
@@ -236,6 +238,7 @@ export default function CustomerLayout() {
         <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-10} /> ) }} />
         <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="person" label="Profil" focused={focused} curveOffset={24} /> ) }} />
         <Tabs.Screen name="ai-hair" options={{ href: null }} />
+        <Tabs.Screen name="chat/[chatId]" options={{ href: null,tabBarStyle: { display: 'none' }, }} />
       </Tabs>
 
       {/* Alttaki mor kavisli AI butonu */}

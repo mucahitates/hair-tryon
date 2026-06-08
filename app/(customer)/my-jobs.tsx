@@ -136,9 +136,6 @@ function BidCard({ bid, job, onAccept, onReject, onChat, isLoading }: {
         <View style={[bidStyles.statusRow, { backgroundColor: '#34D399' + '18' }]}>
           <Ionicons name="checkmark-circle" size={14} color="#34D399" />
           <Text style={[bidStyles.statusRowText, { color: '#34D399' }]}>Teklif kabul edildi</Text>
-          <TouchableOpacity style={bidStyles.chatBtnSmall} onPress={onChat}>
-            <Text style={bidStyles.chatBtnSmallText}>Mesaj At</Text>
-          </TouchableOpacity>
         </View>
       )}
 
@@ -654,7 +651,7 @@ export default function MyJobsScreen() {
         );
 
         Alert.alert('Teklif Kabul Edildi! 🎉', `${bid.hairdresserName} ile iletişime geçebilirsiniz.`, [
-          { text: 'Mesaj At', onPress: () => router.push(`/chat/${chatId}` as any) },
+          { text: 'Mesaj At', onPress: () => router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId } } as any) },
           { text: 'Tamam' },
         ]);
       } catch (error) {
@@ -665,7 +662,7 @@ export default function MyJobsScreen() {
 
     if (action === 'chat') {
       if (bid.chatId) {
-        router.push(`/chat/${bid.chatId}` as any);
+        router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId: bid.chatId } } as any);
         return;
       }
 
@@ -691,7 +688,7 @@ export default function MyJobsScreen() {
           isOnline: false,
         });
         await updateBid(bid.id, { chatId });
-        router.push(`/chat/${chatId}` as any);
+        router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId } } as any);
       } catch (error) {
         Alert.alert('Hata', 'Sohbet başlatılamadı.');
       }
