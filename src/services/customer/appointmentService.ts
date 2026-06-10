@@ -21,9 +21,11 @@ export interface Appointment {
   duration: number;
   price: number;
   status: 'pending' | 'confirmed' | 'cancelled' | 'completed';
-  chatId: string;
+  chatId: string | null;
   note: string | null;
   createdAt: any;
+  beforePhotoUrl: string | null;
+  afterPhotoUrl: string | null;
 }
 
 // Randevu oluştur

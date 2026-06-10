@@ -19,6 +19,7 @@ import { db } from '../../src/services/firebase';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+
 const { width } = Dimensions.get('window');
 
 // ─── TİPLER ────────────────────────────────────────────────
@@ -342,11 +343,40 @@ function AppointmentModal({ visible, onClose, hairdresser, services, availabilit
 
   const availableTimes = selectedDate ? (availability[selectedDate] || []) : [];
 
-  const handleConfirm = () => {
-    Alert.alert('Randevu Oluşturuldu! 🎉',
-      `${hairdresser.salonName} ile ${selectedDate} tarihinde ${selectedTime} saatinde ${selectedService?.name} randevunuz oluşturuldu.`,
-      [{ text: 'Tamam', onPress: onClose }]
-    );
+  const handleConfirm = async () => {
+    if (!selectedService || !selectedDate || !selectedTime) return;
+    try {
+      const { createAppointment } = await import('../../src/services/customer/appointmentService');
+      const { useAuthStore } = await import('../../src/stores/authStore');
+      const user = useAuthStore.getState().user;
+      if (!user) return;
+
+      await createAppointment({
+        customerId: user.uid,
+        customerName: user.displayName,
+        customerEmoji: '👤',
+        hairdresserId: hairdresser.id,
+        hairdresserName: hairdresser.salonName,
+        salonName: hairdresser.salonName,
+        service: selectedService.name,
+        date: selectedDate,
+        time: selectedTime,
+        duration: selectedService.duration,
+        price: selectedService.price,
+        status: 'pending',
+        chatId: null,
+        note: note || null,
+        beforePhotoUrl: null,
+        afterPhotoUrl: null,
+      });
+
+      Alert.alert('Randevu Oluşturuldu! 🎉',
+        `${hairdresser.salonName} ile ${selectedDate} tarihinde ${selectedTime} saatinde randevunuz oluşturuldu.`,
+        [{ text: 'Tamam', onPress: onClose }]
+      );
+    } catch (error) {
+      Alert.alert('Hata', 'Randevu oluşturulamadı. Tekrar deneyin.');
+    }
   };
 
   return (
@@ -646,18 +676,11 @@ export default function HairdresserPublicProfile() {
         setReviews(reviewsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Review)));
 
         // 4. Müsaitlik
-        const availQuery = query(
-          collection(db, 'availability'),
-          where('hairdresserId', '==', id)
-        );
-        const availSnap = await getDocs(availQuery);
-        const availMap: Record<string, string[]> = {};
-        availSnap.docs.forEach(d => {
-          const data = d.data() as AvailabilitySlot;
-          availMap[data.date] = data.times || [];
-        });
-        setAvailability(availMap);
-
+        const availDoc = await getDoc(doc(db, 'availability', id));
+        if (availDoc.exists()) {
+          const data = availDoc.data();
+          setAvailability(data.availableSlots || {});
+        }
         // 5. Mevcut chat var mı?
         if (user?.uid) {
           const chatQuery = query(
@@ -669,6 +692,11 @@ export default function HairdresserPublicProfile() {
           if (!chatSnap.empty) {
             setExistingChatId(chatSnap.docs[0].id);
           }
+        }
+        // 6. Takip durumu
+        if (user?.uid) {
+          const followDoc = await getDoc(doc(db, 'follows', `${user.uid}_${id}`));
+          setIsFollowing(followDoc.exists());
         }
       } catch (error) {
         console.error('Profil verisi çekilirken hata:', error);
@@ -804,9 +832,41 @@ export default function HairdresserPublicProfile() {
 
           {/* Aksiyon butonları */}
           <View style={styles.actionButtons}>
-            <TouchableOpacity style={[styles.followBtn, isFollowing && styles.followingBtn]} onPress={() => setIsFollowing(!isFollowing)}>
+            <TouchableOpacity style={[styles.followBtn, isFollowing && styles.followingBtn]}
+              onPress={async () => {
+                if (!user?.uid) return;
+                const followId = `${user.uid}_${id}`;
+                try {
+                  if (isFollowing) {
+                    // Takibi bırak
+                    const { deleteDoc, doc: firestoreDoc, updateDoc, increment } = await import('firebase/firestore');
+                    await deleteDoc(firestoreDoc(db, 'follows', followId));
+                    await import('firebase/firestore').then(({ updateDoc, doc: firestoreDoc, increment }) =>
+                      updateDoc(firestoreDoc(db, 'hairdresserProfiles', id), { followersCount: increment(-1) })
+                    );
+                    setIsFollowing(false);
+                    setHairdresser(prev => prev ? { ...prev, followersCount: prev.followersCount - 1 } : prev);
+                  } else {
+                    // Takip et
+                    const { setDoc, doc: firestoreDoc, updateDoc, increment } = await import('firebase/firestore');
+                    await setDoc(firestoreDoc(db, 'follows', followId), {
+                      userId: user.uid,
+                      hairdresserId: id,
+                      salonName: hairdresser.salonName,
+                      emoji: hairdresser.emoji || '✂️',
+                      isOnline: hairdresser.isOnline,
+                      createdAt: Date.now(),
+                    });
+                    await updateDoc(firestoreDoc(db, 'hairdresserProfiles', id), { followersCount: increment(1) });
+                    setIsFollowing(true);
+                    setHairdresser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
+                  }
+                } catch (e) {
+                  Alert.alert('Hata', 'İşlem gerçekleştirilemedi.');
+                }
+              }}>
               <Ionicons name={isFollowing ? 'checkmark' : 'person-add-outline'} size={14} color={isFollowing ? COLORS.primary : COLORS.white} />
-              <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>{isFollowing ? 'Takip Ediliyor' : 'Takip Et'}</Text>
+              <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>{isFollowing ? 'Takip ' : 'Takip Et'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.appointmentBtn} onPress={() => setShowAppointment(true)}>

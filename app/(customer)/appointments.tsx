@@ -1,119 +1,19 @@
-// ─────────────────────────────────────────────────────────────
-// RANDEVULAR EKRANI (app/(customer)/appointments.tsx)
-// ─────────────────────────────────────────────────────────────
-// Müşterinin randevularını listeler
-//
-// SEKMELER:
-// 1. Yaklaşan — onaylı/bekleyen randevular + geri sayım
-// 2. Geçmiş — tamamlanan/iptal edilen randevular
-//
-// BAĞLANTILAR:
-// - authStore → kullanıcı bilgisi
-// - Firestore: appointments/{appointmentId} → randevular (şimdilik dummy)
-// - /hairdresser/[id] → kuaför profil sayfası
-// - chat/[chatId] → sohbet ekranı
-//
-// ÖZELLİKLER:
-// - Haftalık takvim görünümü
-// - Geri sayım sayacı
-// - Randevu detay modalı
-// - İptal etme akışı
-// ─────────────────────────────────────────────────────────────
-
 import { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  Modal,
-  Alert,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, Dimensions, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import { listenCustomerAppointments, cancelAppointment, Appointment } from '../../src/services/customer/appointmentService';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
 
 const { width } = Dimensions.get('window');
 
-// ─── DUMMY VERİ ────────────────────────────────────────────
-
-// Firestore: appointments koleksiyonu
-const DUMMY_UPCOMING = [
-  {
-    id: 'a1',
-    hairdresserId: '1',
-    hairdresserName: 'Salon Elegance',
-    hairdresserEmoji: '💇‍♀️',
-    hairdresserAddress: 'Moda Caddesi No:42, Kadıköy, İstanbul',
-    service: 'Balayage',
-    date: '2025-06-05',
-    time: '14:00',
-    duration: 180,
-    price: 750,
-    status: 'confirmed',   // confirmed | pending
-    chatId: 'chat1',
-    notes: 'Doğal görünümlü balayage istiyorum',
-  },
-  {
-    id: 'a2',
-    hairdresserId: '4',
-    hairdresserName: 'Hair Lab',
-    hairdresserEmoji: '🎨',
-    hairdresserAddress: 'Bağdat Caddesi No:88, Suadiye, İstanbul',
-    service: 'Wolf Cut',
-    date: '2025-06-10',
-    time: '11:00',
-    duration: 60,
-    price: 700,
-    status: 'pending',
-    chatId: 'chat3',
-    notes: '',
-  },
-];
-
-const DUMMY_PAST = [
-  {
-    id: 'a3',
-    hairdresserId: '3',
-    hairdresserName: 'Style Studio',
-    hairdresserEmoji: '👑',
-    hairdresserAddress: 'Nişantaşı, İstanbul',
-    service: 'Keratin Bakım',
-    date: '2025-05-24',
-    time: '14:00',
-    duration: 120,
-    price: 580,
-    status: 'completed',
-    chatId: 'chat2',
-    notes: '',
-    rating: 5,
-  },
-  {
-    id: 'a4',
-    hairdresserId: '5',
-    hairdresserName: 'Glam House',
-    hairdresserEmoji: '💅',
-    hairdresserAddress: 'Etiler, İstanbul',
-    service: 'Tek Renk Boyama',
-    date: '2025-05-17',
-    time: '10:00',
-    duration: 90,
-    price: 0,
-    status: 'cancelled',
-    chatId: 'chat4',
-    notes: '',
-    rating: 0,
-  },
-];
-
-// ─── YARDIMCI FONKSİYONLAR ─────────────────────────────────
-
-// Tarihi güzel formatta göster
 const formatDate = (dateStr: string) => {
   const date = new Date(dateStr);
   const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -126,31 +26,26 @@ const formatDate = (dateStr: string) => {
   };
 };
 
-// Randevuya kalan süreyi hesapla
 const getCountdown = (dateStr: string, timeStr: string) => {
   const appointmentDate = new Date(`${dateStr}T${timeStr}:00`);
   const now = new Date();
   const diff = appointmentDate.getTime() - now.getTime();
-
   if (diff <= 0) return null;
-
   const days = Math.floor(diff / (1000 * 60 * 60 * 24));
   const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
   const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-
   if (days > 0) return `${days} gün ${hours} saat`;
   if (hours > 0) return `${hours} saat ${minutes} dk`;
   return `${minutes} dakika`;
 };
 
-// ─── DURUM BADGE ───────────────────────────────────────────
 function StatusBadge({ status }: { status: string }) {
-  const config = {
+  const config = ({
     confirmed: { label: 'Onaylandı', color: '#34D399', bg: '#34D39922' },
     pending: { label: 'Onay Bekleniyor', color: '#FFB844', bg: '#FFB84422' },
     completed: { label: 'Tamamlandı', color: '#A78BFA', bg: '#A78BFA22' },
     cancelled: { label: 'İptal Edildi', color: '#F87171', bg: '#F8717122' },
-  }[status] || { label: status, color: COLORS.textMuted, bg: 'rgba(255,255,255,0.08)' };
+  } as Record<string, any>)[status] || { label: status, color: COLORS.textMuted, bg: 'rgba(255,255,255,0.08)' };
 
   return (
     <View style={[badgeStyles.container, { backgroundColor: config.bg }]}>
@@ -166,14 +61,12 @@ const badgeStyles = StyleSheet.create({
   text: { fontSize: 11, fontWeight: '700' },
 });
 
-// ─── RANDEVU DETAY MODALI ──────────────────────────────────
-// Randevu kartına tıklayınca açılır
-// Kuaför bilgisi, hizmet, tarih, saat, adres, fiyat, iptal butonu
-function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
+function AppointmentDetailModal({ visible, appointment, onClose, onCancel, hairdresserAddress }: {
   visible: boolean;
-  appointment: typeof DUMMY_UPCOMING[0] | typeof DUMMY_PAST[0] | null;
+  appointment: Appointment | null;
   onClose: () => void;
   onCancel: (id: string) => void;
+  hairdresserAddress: string;
 }) {
   const router = useRouter();
   const slideAnim = useRef(new Animated.Value(400)).current;
@@ -196,8 +89,6 @@ function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={detailStyles.overlay}>
         <Animated.View style={[detailStyles.container, { transform: [{ translateY: slideAnim }] }]}>
-
-          {/* Başlık */}
           <View style={detailStyles.header}>
             <Text style={detailStyles.title}>Randevu Detayı</Text>
             <TouchableOpacity onPress={onClose} style={detailStyles.closeBtn}>
@@ -206,8 +97,6 @@ function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false}>
-
-            {/* Durum + geri sayım */}
             <View style={detailStyles.statusRow}>
               <StatusBadge status={appointment.status} />
               {countdown && (
@@ -218,20 +107,13 @@ function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
               )}
             </View>
 
-            {/* Kuaför kartı */}
             <TouchableOpacity
               style={detailStyles.hairdresserCard}
-              onPress={() => {
-                onClose();
-                router.push(`/hairdresser/${appointment.hairdresserId}` as any);
-              }}
+              onPress={() => { onClose(); router.push(`/hairdresser/${appointment.hairdresserId}` as any); }}
             >
-              <LinearGradient
-                colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
-                style={detailStyles.hairdresserGradient}
-              >
+              <LinearGradient colors={[COLORS.primary + '22', COLORS.primaryDark + '11']} style={detailStyles.hairdresserGradient}>
                 <View style={detailStyles.hairdresserAvatar}>
-                  <Text style={detailStyles.hairdresserEmoji}>{appointment.hairdresserEmoji}</Text>
+                  <Text style={detailStyles.hairdresserEmoji}>{appointment.customerEmoji || '✂️'}</Text>
                 </View>
                 <View style={detailStyles.hairdresserInfo}>
                   <Text style={detailStyles.hairdresserName}>{appointment.hairdresserName}</Text>
@@ -241,134 +123,119 @@ function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
               </LinearGradient>
             </TouchableOpacity>
 
-            {/* Detay bilgileri */}
             <View style={detailStyles.detailCard}>
-
-              {/* Tarih */}
               <View style={detailStyles.detailRow}>
-                <View style={detailStyles.detailIcon}>
-                  <Ionicons name="calendar-outline" size={18} color={COLORS.primary} />
-                </View>
+                <View style={detailStyles.detailIcon}><Ionicons name="calendar-outline" size={18} color={COLORS.primary} /></View>
                 <View style={detailStyles.detailInfo}>
                   <Text style={detailStyles.detailLabel}>Tarih</Text>
                   <Text style={detailStyles.detailValue}>{dateInfo.dayName}, {dateInfo.full}</Text>
                 </View>
               </View>
-
               <View style={detailStyles.divider} />
-
-              {/* Saat */}
               <View style={detailStyles.detailRow}>
-                <View style={detailStyles.detailIcon}>
-                  <Ionicons name="time-outline" size={18} color={COLORS.primary} />
-                </View>
+                <View style={detailStyles.detailIcon}><Ionicons name="time-outline" size={18} color={COLORS.primary} /></View>
                 <View style={detailStyles.detailInfo}>
                   <Text style={detailStyles.detailLabel}>Saat</Text>
                   <Text style={detailStyles.detailValue}>{appointment.time} ({appointment.duration} dk)</Text>
                 </View>
               </View>
-
               <View style={detailStyles.divider} />
-
-              {/* Adres */}
               <View style={detailStyles.detailRow}>
-                <View style={detailStyles.detailIcon}>
-                  <Ionicons name="location-outline" size={18} color={COLORS.primary} />
-                </View>
+                <View style={detailStyles.detailIcon}><Ionicons name="location-outline" size={18} color={COLORS.primary} /></View>
                 <View style={detailStyles.detailInfo}>
                   <Text style={detailStyles.detailLabel}>Adres</Text>
-                  <Text style={detailStyles.detailValue}>{appointment.hairdresserAddress}</Text>
+                  <Text style={detailStyles.detailValue}>{hairdresserAddress || appointment.salonName}</Text>
                 </View>
               </View>
-
               <View style={detailStyles.divider} />
-
-              {/* Fiyat */}
               <View style={detailStyles.detailRow}>
-                <View style={detailStyles.detailIcon}>
-                  <Ionicons name="cash-outline" size={18} color={COLORS.primary} />
-                </View>
+                <View style={detailStyles.detailIcon}><Ionicons name="cash-outline" size={18} color={COLORS.primary} /></View>
                 <View style={detailStyles.detailInfo}>
                   <Text style={detailStyles.detailLabel}>Ücret</Text>
                   <Text style={[detailStyles.detailValue, { color: COLORS.primary }]}>
-                    {appointment.price > 0 ? `₺${appointment.price}` : 'Ücretsiz'}
+                    {appointment.price > 0 ? `₺${appointment.price}` : 'Belirtilmedi'}
                   </Text>
                 </View>
               </View>
-
-              {/* Notlar varsa */}
-              {appointment.notes && (
+              {appointment.note && (
                 <>
                   <View style={detailStyles.divider} />
                   <View style={detailStyles.detailRow}>
-                    <View style={detailStyles.detailIcon}>
-                      <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
-                    </View>
+                    <View style={detailStyles.detailIcon}><Ionicons name="document-text-outline" size={18} color={COLORS.primary} /></View>
                     <View style={detailStyles.detailInfo}>
                       <Text style={detailStyles.detailLabel}>Notlar</Text>
-                      <Text style={detailStyles.detailValue}>{appointment.notes}</Text>
-                    </View>
-                  </View>
-                </>
-              )}
-
-              {/* Tamamlandıysa puan */}
-              {'rating' in appointment && appointment.rating > 0 && (
-                <>
-                  <View style={detailStyles.divider} />
-                  <View style={detailStyles.detailRow}>
-                    <View style={detailStyles.detailIcon}>
-                      <Ionicons name="star-outline" size={18} color="#FFB844" />
-                    </View>
-                    <View style={detailStyles.detailInfo}>
-                      <Text style={detailStyles.detailLabel}>Verdiğin Puan</Text>
-                      <View style={{ flexDirection: 'row', gap: 3, marginTop: 2 }}>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Ionicons
-                            key={star}
-                            name={star <= appointment.rating ? 'star' : 'star-outline'}
-                            size={16}
-                            color="#FFB844"
-                          />
-                        ))}
-                      </View>
+                      <Text style={detailStyles.detailValue}>{appointment.note}</Text>
                     </View>
                   </View>
                 </>
               )}
             </View>
 
-            {/* Aksiyon butonları — sadece yaklaşan randevular */}
             {isUpcoming && (
               <View style={detailStyles.actions}>
-                {/* Mesaj At — chat ekranına gider */}
                 <TouchableOpacity
                   style={detailStyles.chatBtn}
-                  onPress={() => {
+                  onPress={async () => {
                     onClose();
-                    router.push(`/chat/${appointment.chatId}` as any);
+                    if (appointment.chatId) {
+                      router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId: appointment.chatId } } as any);
+                      return;
+                    }
+                    try {
+                      const { collection, query, where, getDocs, addDoc, serverTimestamp } = await import('firebase/firestore');
+                      const { db } = await import('../../src/services/firebase');
+                      const { useAuthStore } = await import('../../src/stores/authStore');
+                      const user = useAuthStore.getState().user;
+                      if (!user) return;
+                      const chatQuery = query(
+                        collection(db, 'chats'),
+                        where('customerId', '==', user.uid),
+                        where('hairdresserId', '==', appointment.hairdresserId)
+                      );
+                      const chatSnap = await getDocs(chatQuery);
+                      if (!chatSnap.empty) {
+                        router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId: chatSnap.docs[0].id } } as any);
+                      } else {
+                        const chatRef = await addDoc(collection(db, 'chats'), {
+                          customerId: user.uid,
+                          customerName: user.displayName,
+                          customerEmoji: '👤',
+                          hairdresserId: appointment.hairdresserId,
+                          hairdresserName: appointment.hairdresserName,
+                          hairdresserEmoji: '✂️',
+                          jobService: appointment.service,
+                          jobStatus: 'accepted',
+                          bidPrice: appointment.price,
+                          customerBudget: appointment.price,
+                          appointmentDate: `${appointment.date} ${appointment.time}`,
+                          note: null,
+                          beforeEmoji: '😊',
+                          afterEmoji: '✨',
+                          lastMessage: '',
+                          lastMessageAt: serverTimestamp(),
+                          unreadCustomer: 0,
+                          unreadHairdresser: 0,
+                          isOnline: false,
+                          createdAt: serverTimestamp(),
+                        });
+                        router.push({ pathname: '/(customer)/chat/[chatId]', params: { chatId: chatRef.id } } as any);
+                      }
+                    } catch {
+                      Alert.alert('Hata', 'Sohbet açılamadı.');
+                    }
                   }}
                 >
                   <Ionicons name="chatbubble-outline" size={18} color={COLORS.primary} />
                   <Text style={detailStyles.chatBtnText}>Mesaj At</Text>
                 </TouchableOpacity>
 
-                {/* İptal Et — Firestore: appointments.status = cancelled */}
                 <TouchableOpacity
                   style={detailStyles.cancelBtn}
                   onPress={() => {
-                    Alert.alert(
-                      'Randevuyu İptal Et',
-                      'Bu randevuyu iptal etmek istediğine emin misin?',
-                      [
-                        { text: 'Vazgeç', style: 'cancel' },
-                        {
-                          text: 'İptal Et',
-                          style: 'destructive',
-                          onPress: () => { onCancel(appointment.id); onClose(); }
-                        },
-                      ]
-                    );
+                    Alert.alert('Randevuyu İptal Et', 'Bu randevuyu iptal etmek istediğine emin misin?', [
+                      { text: 'Vazgeç', style: 'cancel' },
+                      { text: 'İptal Et', style: 'destructive', onPress: () => { onCancel(appointment.id!); onClose(); } },
+                    ]);
                   }}
                 >
                   <Ionicons name="close-circle-outline" size={18} color={COLORS.error} />
@@ -376,7 +243,6 @@ function AppointmentDetailModal({ visible, appointment, onClose, onCancel }: {
                 </TouchableOpacity>
               </View>
             )}
-
             <View style={{ height: SPACING.xl }} />
           </ScrollView>
         </Animated.View>
@@ -415,68 +281,39 @@ const detailStyles = StyleSheet.create({
   cancelBtnText: { fontSize: FONTS.regular, color: COLORS.error, fontWeight: '700' },
 });
 
-// ─── HAFTALIK TAKVİM ───────────────────────────────────────
-// Yatay kaydırılabilir haftalık takvim
-// Randevusu olan günler nokta ile işaretlenir
-// Seçilen güne göre randevular filtrelenir
 function WeeklyCalendar({ selectedDate, onSelectDate, appointmentDates }: {
   selectedDate: string;
   onSelectDate: (date: string) => void;
   appointmentDates: string[];
 }) {
-  const scrollRef = useRef<ScrollView>(null);
-
-  // Bugünden itibaren 14 gün
   const days = Array.from({ length: 14 }, (_, i) => {
     const date = new Date();
     date.setDate(date.getDate() + i);
     return date;
   });
-
   const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-
-  const formatDateKey = (date: Date) => {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
+  const formatDateKey = (date: Date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
   return (
-    <ScrollView
-      ref={scrollRef}
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={calStyles.container}
-    >
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={calStyles.container}>
       {days.map((date, i) => {
         const dateKey = formatDateKey(date);
         const isSelected = selectedDate === dateKey;
         const hasAppointment = appointmentDates.includes(dateKey);
         const isToday = i === 0;
-
         return (
-          <TouchableOpacity
-            key={dateKey}
-            onPress={() => onSelectDate(dateKey)}
-            style={[calStyles.dayBtn, isSelected && calStyles.dayBtnSelected]}
-          >
+          <TouchableOpacity key={dateKey} onPress={() => onSelectDate(dateKey)} style={[calStyles.dayBtn, isSelected && calStyles.dayBtnSelected]}>
             {isSelected ? (
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
-                style={calStyles.dayGradient}
-              >
-                <Text style={[calStyles.dayName, { color: COLORS.white }]}>
-                  {isToday ? 'Bugün' : dayNames[date.getDay()]}
-                </Text>
+              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={calStyles.dayGradient}>
+                <Text style={[calStyles.dayName, { color: COLORS.white }]}>{isToday ? 'Bugün' : dayNames[date.getDay()]}</Text>
                 <Text style={[calStyles.dayNum, { color: COLORS.white }]}>{date.getDate()}</Text>
                 {hasAppointment && <View style={[calStyles.dot, { backgroundColor: COLORS.white }]} />}
               </LinearGradient>
             ) : (
               <View style={calStyles.dayInner}>
-                <Text style={[calStyles.dayName, isToday && { color: COLORS.primary }]}>
-                  {isToday ? 'Bugün' : dayNames[date.getDay()]}
-                </Text>
-                <Text style={[calStyles.dayNum, isToday && { color: COLORS.primary }]}>
-                  {date.getDate()}
-                </Text>
+                <Text style={[calStyles.dayName, isToday && { color: COLORS.primary }]}>{isToday ? 'Bugün' : dayNames[date.getDay()]}</Text>
+                <Text style={[calStyles.dayNum, isToday && { color: COLORS.primary }]}>{date.getDate()}</Text>
                 {hasAppointment && <View style={calStyles.dot} />}
               </View>
             )}
@@ -498,13 +335,7 @@ const calStyles = StyleSheet.create({
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.primary },
 });
 
-// ─── YAKLAŞAN RANDEVU KARTI ────────────────────────────────
-// Onaylı/bekleyen randevu kartı
-// Tıklayınca AppointmentDetailModal açılır
-function UpcomingCard({ appointment, onPress }: {
-  appointment: typeof DUMMY_UPCOMING[0];
-  onPress: () => void;
-}) {
+function UpcomingCard({ appointment, onPress }: { appointment: Appointment; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
@@ -526,32 +357,18 @@ function UpcomingCard({ appointment, onPress }: {
       onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
       activeOpacity={1}
     >
-      <Animated.View style={[
-        styles.upcomingCard,
-        { transform: [{ scale: scaleAnim }, { translateY: slideAnim }], opacity: opacityAnim }
-      ]}>
+      <Animated.View style={[styles.upcomingCard, { transform: [{ scale: scaleAnim }, { translateY: slideAnim }], opacity: opacityAnim }]}>
         <LinearGradient
-          colors={
-            appointment.status === 'confirmed'
-              ? [COLORS.primary + '22', COLORS.primaryDark + '11']
-              : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']
-          }
+          colors={appointment.status === 'confirmed' ? [COLORS.primary + '22', COLORS.primaryDark + '11'] : ['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
           style={styles.upcomingGradient}
         >
-          {/* Üst satır — tarih + durum */}
           <View style={styles.upcomingTop}>
-            {/* Tarih kutusu */}
             <View style={styles.dateBox}>
-              <LinearGradient
-                colors={[COLORS.primary, COLORS.primaryDark]}
-                style={styles.dateBoxGradient}
-              >
+              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.dateBoxGradient}>
                 <Text style={styles.dateDay}>{dateInfo.day}</Text>
                 <Text style={styles.dateMonth}>{dateInfo.month.slice(0, 3)}</Text>
               </LinearGradient>
             </View>
-
-            {/* Bilgiler */}
             <View style={styles.upcomingInfo}>
               <Text style={styles.upcomingService}>{appointment.service}</Text>
               <Text style={styles.upcomingHairdresser}>{appointment.hairdresserName}</Text>
@@ -560,50 +377,32 @@ function UpcomingCard({ appointment, onPress }: {
                 <Text style={styles.upcomingMetaText}>{appointment.time} · {appointment.duration} dk</Text>
               </View>
             </View>
-
-            {/* Durum + fiyat */}
             <View style={styles.upcomingRight}>
               <StatusBadge status={appointment.status} />
               <Text style={styles.upcomingPrice}>₺{appointment.price}</Text>
             </View>
           </View>
-
-          {/* Geri sayım */}
           {countdown && (
             <View style={styles.countdownRow}>
-              <LinearGradient
-                colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-                style={styles.countdownBar}
-              >
+              <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.countdownBar}>
                 <Ionicons name="hourglass-outline" size={14} color={COLORS.primary} />
                 <Text style={styles.countdownText}>{countdown} kaldı</Text>
               </LinearGradient>
-
-              {/* Adres */}
               <View style={styles.addressRow}>
                 <Ionicons name="location-outline" size={12} color={COLORS.textMuted} />
-                <Text style={styles.addressText} numberOfLines={1}>
-                  {appointment.hairdresserAddress.split(',')[0]}
-                </Text>
+                <Text style={styles.addressText} numberOfLines={1}>{appointment.salonName}</Text>
               </View>
             </View>
           )}
-
         </LinearGradient>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-// ─── GEÇMİŞ RANDEVU KARTI ─────────────────────────────────
-// Tamamlanan/iptal edilen randevu kartı
-function PastCard({ appointment, onPress }: {
-  appointment: typeof DUMMY_PAST[0];
-  onPress: () => void;
-}) {
+function PastCard({ appointment, onPress }: { appointment: Appointment; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const dateInfo = formatDate(appointment.date);
-
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -620,20 +419,11 @@ function PastCard({ appointment, onPress }: {
           <View style={styles.pastInfo}>
             <Text style={styles.pastService}>{appointment.service}</Text>
             <Text style={styles.pastHairdresser}>{appointment.hairdresserName}</Text>
-            {'rating' in appointment && appointment.rating > 0 && (
-              <View style={styles.pastStars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Ionicons key={star} name={star <= appointment.rating ? 'star' : 'star-outline'} size={11} color="#FFB844" />
-                ))}
-              </View>
-            )}
           </View>
         </View>
         <View style={styles.pastRight}>
           <StatusBadge status={appointment.status} />
-          {appointment.price > 0 && (
-            <Text style={styles.pastPrice}>₺{appointment.price}</Text>
-          )}
+          {appointment.price > 0 && <Text style={styles.pastPrice}>₺{appointment.price}</Text>}
           <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
         </View>
       </Animated.View>
@@ -641,52 +431,29 @@ function PastCard({ appointment, onPress }: {
   );
 }
 
-// ─── BOŞ DURUM ─────────────────────────────────────────────
 function EmptyState({ isUpcoming }: { isUpcoming: boolean }) {
   const floatAnim = useRef(new Animated.Value(0)).current;
   const router = useRouter();
-
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -10, duration: 1500, useNativeDriver: false }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 1500, useNativeDriver: false }),
-      ])
-    ).start();
+    Animated.loop(Animated.sequence([
+      Animated.timing(floatAnim, { toValue: -10, duration: 1500, useNativeDriver: false }),
+      Animated.timing(floatAnim, { toValue: 0, duration: 1500, useNativeDriver: false }),
+    ])).start();
   }, []);
-
   return (
     <View style={styles.emptyContainer}>
       <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
-        <LinearGradient
-          colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-          style={styles.emptyIcon}
-        >
-          <Ionicons
-            name={isUpcoming ? 'calendar-outline' : 'time-outline'}
-            size={52}
-            color={COLORS.primary}
-          />
+        <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.emptyIcon}>
+          <Ionicons name={isUpcoming ? 'calendar-outline' : 'time-outline'} size={52} color={COLORS.primary} />
         </LinearGradient>
       </Animated.View>
-      <Text style={styles.emptyTitle}>
-        {isUpcoming ? 'Yaklaşan randevu yok' : 'Geçmiş randevu yok'}
-      </Text>
+      <Text style={styles.emptyTitle}>{isUpcoming ? 'Yaklaşan randevu yok' : 'Geçmiş randevu yok'}</Text>
       <Text style={styles.emptyDesc}>
-        {isUpcoming
-          ? 'Kuaför teklifini kabul ettiğinde randevun burada görünür'
-          : 'Tamamlanan randevularınız burada listelenecek'}
+        {isUpcoming ? 'Kuaför teklifini kabul ettiğinde randevun burada görünür' : 'Tamamlanan randevularınız burada listelenecek'}
       </Text>
       {isUpcoming && (
-        <TouchableOpacity
-          style={styles.emptyBtn}
-          onPress={() => router.push('/(customer)/explore' as any)}
-        >
-          <LinearGradient
-            colors={[COLORS.primary, COLORS.primaryDark]}
-            start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-            style={styles.emptyBtnGradient}
-          >
+        <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/(customer)/explore' as any)}>
+          <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.emptyBtnGradient}>
             <Ionicons name="search-outline" size={18} color={COLORS.white} />
             <Text style={styles.emptyBtnText}>Kuaför Bul</Text>
           </LinearGradient>
@@ -696,22 +463,20 @@ function EmptyState({ isUpcoming }: { isUpcoming: boolean }) {
   );
 }
 
-// ─── ANA EKRAN ─────────────────────────────────────────────
 export default function AppointmentsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
 
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
-  const [selectedAppointment, setSelectedAppointment] = useState<any>(null);
-  const [upcomingList, setUpcomingList] = useState(DUMMY_UPCOMING);
-  const [pastList, setPastList] = useState(DUMMY_PAST);
+  const [selectedAppointment, setSelectedAppointment] = useState<Appointment | null>(null);
+  const [hairdresserAddresses, setHairdresserAddresses] = useState<Record<string, string>>({});
 
-  // Takvim için seçili gün
   const today = new Date();
   const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
   const [selectedDate, setSelectedDate] = useState(todayKey);
 
-  // Animasyonlar
   const headerAnim = useRef(new Animated.Value(0)).current;
   const tabSlide = useRef(new Animated.Value(0)).current;
 
@@ -719,38 +484,63 @@ export default function AppointmentsScreen() {
     Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }).start();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const unsub = listenCustomerAppointments(user.uid, async (apts) => {
+      setAppointments(apts);
+      setIsLoading(false);
+      // Kuaför adreslerini çek
+      const addresses: Record<string, string> = {};
+      for (const apt of apts) {
+        if (!addresses[apt.hairdresserId]) {
+          try {
+            const snap = await getDoc(doc(db, 'hairdresserProfiles', apt.hairdresserId));
+            if (snap.exists()) {
+              addresses[apt.hairdresserId] = snap.data().address || snap.data().salonName || '';
+            }
+          } catch { }
+        }
+      }
+      setHairdresserAddresses(addresses);
+    });
+    return unsub;
+  }, [user]);
+
   const handleTabChange = (tab: 'upcoming' | 'past') => {
     Animated.spring(tabSlide, { toValue: tab === 'upcoming' ? 0 : 1, tension: 70, friction: 10, useNativeDriver: false }).start();
     setActiveTab(tab);
   };
 
-  const tabIndicatorLeft = tabSlide.interpolate({ inputRange: [0, 1], outputRange: ['0%', '50%'] });
-
-  // Randevu iptal et
-  // TODO: Firestore: appointments/{id}.status = cancelled
-  const handleCancel = (id: string) => {
-    const appointment = upcomingList.find(a => a.id === id);
-    if (appointment) {
-      setUpcomingList(prev => prev.filter(a => a.id !== id));
-      setPastList(prev => [{ ...appointment, status: 'cancelled', rating: 0 } as any, ...prev]);
+  const handleCancel = async (id: string) => {
+    try {
+      await cancelAppointment(id);
+    } catch {
+      Alert.alert('Hata', 'Randevu iptal edilemedi.');
     }
   };
 
-  // Takvim için randevu tarihlerini hazırla
+  const tabIndicatorLeft = tabSlide.interpolate({ inputRange: [0, 1], outputRange: ['0%', '50%'] });
+
+  const upcomingList = appointments.filter(a => a.status === 'confirmed' || a.status === 'pending');
+  const pastList = appointments.filter(a => a.status === 'completed' || a.status === 'cancelled');
   const appointmentDates = upcomingList.map(a => a.date);
 
-  // Seçili güne göre filtrele — hiç seçili yoksa tümünü göster
   const filteredUpcoming = selectedDate
     ? upcomingList.filter(a => a.date === selectedDate)
     : upcomingList;
 
+  if (isLoading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
-        start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.orb1} />
 
       {/* ── ÜST BAR ── */}
@@ -759,12 +549,17 @@ export default function AppointmentsScreen() {
           <Text style={styles.title}>Randevularım</Text>
           <Text style={styles.subtitle}>{upcomingList.length} yaklaşan randevu</Text>
         </View>
-        <View style={styles.totalBadge}>
-          <Text style={styles.totalBadgeText}>{upcomingList.length}</Text>
-        </View>
+        <TouchableOpacity
+          style={styles.addBtn}
+          onPress={() => router.push('/(customer)/explore' as any)}
+        >
+          <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.addBtnGradient}>
+            <Ionicons name="add" size={22} color={COLORS.white} />
+          </LinearGradient>
+        </TouchableOpacity>
       </Animated.View>
 
-      {/* ── SEKME NAVİGASYONU ── */}
+      {/* ── SEKME ── */}
       <View style={styles.tabContainer}>
         <Animated.View style={[styles.tabIndicator, { left: tabIndicatorLeft }]} />
         <TouchableOpacity style={styles.tabBtn} onPress={() => handleTabChange('upcoming')}>
@@ -781,17 +576,13 @@ export default function AppointmentsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-
         {activeTab === 'upcoming' ? (
           <>
-            {/* Haftalık takvim */}
             <WeeklyCalendar
               selectedDate={selectedDate}
               onSelectDate={(date) => setSelectedDate(selectedDate === date ? '' : date)}
               appointmentDates={appointmentDates}
             />
-
-            {/* Seçili gün filtresi bilgisi */}
             {selectedDate && (
               <View style={styles.filterRow}>
                 <Text style={styles.filterText}>
@@ -802,15 +593,10 @@ export default function AppointmentsScreen() {
                 </TouchableOpacity>
               </View>
             )}
-
             {filteredUpcoming.length > 0 ? (
               <View style={styles.cardList}>
-                {filteredUpcoming.map((appointment) => (
-                  <UpcomingCard
-                    key={appointment.id}
-                    appointment={appointment}
-                    onPress={() => setSelectedAppointment(appointment)}
-                  />
+                {filteredUpcoming.map((apt) => (
+                  <UpcomingCard key={apt.id} appointment={apt} onPress={() => setSelectedAppointment(apt)} />
                 ))}
               </View>
             ) : (
@@ -820,41 +606,35 @@ export default function AppointmentsScreen() {
         ) : (
           pastList.length > 0 ? (
             <View style={styles.cardList}>
-              {pastList.map((appointment) => (
-                <PastCard
-                  key={appointment.id}
-                  appointment={appointment}
-                  onPress={() => setSelectedAppointment(appointment)}
-                />
+              {pastList.map((apt) => (
+                <PastCard key={apt.id} appointment={apt} onPress={() => setSelectedAppointment(apt)} />
               ))}
             </View>
           ) : (
             <EmptyState isUpcoming={false} />
           )
         )}
-
       </ScrollView>
 
-      {/* Randevu detay modalı */}
       <AppointmentDetailModal
         visible={selectedAppointment !== null}
         appointment={selectedAppointment}
         onClose={() => setSelectedAppointment(null)}
         onCancel={handleCancel}
+        hairdresserAddress={selectedAppointment ? (hairdresserAddresses[selectedAppointment.hairdresserId] || '') : ''}
       />
     </View>
   );
 }
 
-// ─── STİLLER ───────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   orb1: { position: 'absolute', width: 250, height: 250, borderRadius: 125, backgroundColor: '#7C3AED', opacity: 0.12, top: -60, right: -60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingTop: 56, paddingBottom: SPACING.md },
   title: { fontSize: FONTS.xxlarge, fontWeight: 'bold', color: COLORS.textPrimary },
   subtitle: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
-  totalBadge: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, minWidth: 28, height: 28, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8 },
-  totalBadgeText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: 'bold' },
+  addBtn: { borderRadius: RADIUS.full, overflow: 'hidden' },
+  addBtnGradient: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   tabContainer: { flexDirection: 'row', marginHorizontal: SPACING.lg, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.md, padding: 3, borderWidth: 1, borderColor: COLORS.border, marginBottom: SPACING.sm, position: 'relative', height: 42 },
   tabIndicator: { position: 'absolute', top: 3, bottom: 3, width: '50%', backgroundColor: COLORS.primary, borderRadius: RADIUS.sm },
   tabBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, zIndex: 1 },
@@ -867,7 +647,6 @@ const styles = StyleSheet.create({
   filterText: { fontSize: FONTS.small, color: COLORS.textSecondary, fontWeight: '600' },
   filterClear: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
   cardList: { paddingHorizontal: SPACING.lg, gap: SPACING.md },
-  // Yaklaşan randevu kartı
   upcomingCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   upcomingGradient: { padding: SPACING.md, gap: SPACING.sm },
   upcomingTop: { flexDirection: 'row', gap: SPACING.md, alignItems: 'flex-start' },
@@ -887,7 +666,6 @@ const styles = StyleSheet.create({
   countdownText: { fontSize: 11, color: COLORS.primary, fontWeight: '700' },
   addressRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   addressText: { fontSize: 11, color: COLORS.textMuted, flex: 1 },
-  // Geçmiş randevu kartı
   pastCard: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.xl, padding: SPACING.md },
   pastLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, flex: 1 },
   pastDateBox: { width: 44, height: 44, borderRadius: RADIUS.md, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
@@ -896,10 +674,8 @@ const styles = StyleSheet.create({
   pastInfo: { flex: 1, gap: 2 },
   pastService: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
   pastHairdresser: { fontSize: FONTS.small, color: COLORS.textSecondary },
-  pastStars: { flexDirection: 'row', gap: 2, marginTop: 2 },
   pastRight: { alignItems: 'flex-end', gap: 4 },
   pastPrice: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.success },
-  // Boş durum
   emptyContainer: { alignItems: 'center', paddingTop: 60, gap: SPACING.md, paddingHorizontal: SPACING.xl },
   emptyIcon: { width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center' },
   emptyTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textSecondary },

@@ -1,11 +1,4 @@
-// Müşteri ana sayfası
-// 1. Üst bar — hoş geldin + coin + bildirim
-// 2. AI Saç banner
-// 3. Takip ettiklerin — yatay scroll
-// 4. Toggle 1: Son Denemeler | Favoriler
-// 5. Toggle 2: Kampanyalar | Popüler Modeller | Önerilen Kuaförler
-// Şimdilik dummy data — Firestore bağlantısı sonra eklenecek
-
+// app/(customer)/index.tsx
 import { useRef, useEffect, useState } from 'react';
 import {
   View,
@@ -15,6 +8,9 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
+  ActivityIndicator,
+  Modal,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,58 +18,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+// FIREBASE IMPORTS
+import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+
 const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.8; // Ekranın %80'i genişlik
 
-// ── DUMMY VERİLER ──────────────────────────────────────────
-const DUMMY_FOLLOWING = [
-  { id: '1', name: 'Salon Elegance', emoji: '💇‍♀️', isOnline: true },
-  { id: '2', name: 'Modern Saç', emoji: '✨', isOnline: false },
-  { id: '3', name: 'Style Studio', emoji: '👑', isOnline: true },
-  { id: '4', name: 'Hair Lab', emoji: '🎨', isOnline: true },
-  { id: '5', name: 'Glam House', emoji: '💅', isOnline: false },
-];
-
-const DUMMY_AI_TRIES = [
-  { id: '1', style: 'Dalgalı Bob', color: 'Karamel', emoji: '🌊' },
-  { id: '2', style: 'Uzun Düz', color: 'Platin', emoji: '⚡' },
-  { id: '3', style: 'Pixie Cut', color: 'Doğal', emoji: '🌿' },
-];
-
-const DUMMY_FAVORITES = [
-  { id: '1', style: 'Balayage', color: 'Altın', emoji: '🌟' },
-  { id: '2', style: 'Wolf Cut', color: 'Koyu', emoji: '🐺' },
-  { id: '3', style: 'Butterfly', color: 'Kahve', emoji: '🦋' },
-  { id: '4', style: 'Bob Kesim', color: 'Siyah', emoji: '✂️' },
-];
-
-const DUMMY_CAMPAIGNS = [
-  { id: '1', salon: 'Salon Elegance', title: '%30 İndirim', desc: 'Tüm renk işlemleri', emoji: '🎉', validUntil: '31 Ara' },
-  { id: '2', salon: 'Modern Saç', title: 'Ücretsiz Bakım', desc: 'Keratin + Saç bakımı', emoji: '💝', validUntil: '15 Ara' },
-  { id: '3', salon: 'Style Studio', title: '2 Al 1 Öde', desc: 'Gelin paketi', emoji: '👑', validUntil: '31 Oca' },
-];
-
-const DUMMY_TRENDING = [
-  { id: '1', style: 'Wolf Cut', likes: '12.4K', emoji: '🐺', trend: '↑ Trend' },
-  { id: '2', style: 'Curtain Bangs', likes: '8.9K', emoji: '✂️', trend: '🔥 Ateş' },
-  { id: '3', style: 'Butterfly Cut', likes: '6.2K', emoji: '🦋', trend: '⭐ Yeni' },
-  { id: '4', style: 'Bixie Cut', likes: '4.8K', emoji: '💫', trend: '↑ Trend' },
-];
-
-const DUMMY_SPONSORED = [
-  { id: '1', name: 'Premium Salon', speciality: 'Saç Boyama Uzmanı', rating: 4.9, price: '₺250+', emoji: '⭐', tag: 'Reklam' },
-  { id: '2', name: 'Luxury Hair', speciality: 'Keratin Uzmanı', rating: 4.7, price: '₺400+', emoji: '💎', tag: 'Önerilen' },
-];
-
-// ── TAB TOGGLE ─────────────────────────────────────────────
-function TabToggle({
-  tabs,
-  activeIndex,
-  onPress,
-}: {
-  tabs: string[];
-  activeIndex: number;
-  onPress: (i: number) => void;
-}) {
+// ── TAB TOGGLE BİLEŞENİ ────────────────────────────────────
+function TabToggle({ tabs, activeIndex, onPress }: { tabs: string[]; activeIndex: number; onPress: (i: number) => void; }) {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const containerWidth = width - SPACING.lg * 2 - 8;
   const tabWidth = containerWidth / tabs.length;
@@ -89,31 +42,10 @@ function TabToggle({
 
   return (
     <View style={toggleStyles.container}>
-      <Animated.View
-        style={[
-          toggleStyles.slider,
-          {
-            width: tabWidth,
-            transform: [{ translateX: slideAnim }],
-          },
-        ]}
-      />
+      <Animated.View style={[toggleStyles.slider, { width: tabWidth, transform: [{ translateX: slideAnim }] }]} />
       {tabs.map((tab, i) => (
-        <TouchableOpacity
-          key={tab}
-          style={[toggleStyles.tab, { width: tabWidth }]}
-          onPress={() => onPress(i)}
-          activeOpacity={0.7}
-        >
-          <Text
-            numberOfLines={1}
-            adjustsFontSizeToFit
-            minimumFontScale={0.7}
-            style={[
-              toggleStyles.tabText,
-              activeIndex === i && toggleStyles.tabTextActive,
-            ]}
-          >
+        <TouchableOpacity key={tab} style={[toggleStyles.tab, { width: tabWidth }]} onPress={() => onPress(i)} activeOpacity={0.7}>
+          <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={[toggleStyles.tabText, activeIndex === i && toggleStyles.tabTextActive]}>
             {tab}
           </Text>
         </TouchableOpacity>
@@ -123,117 +55,69 @@ function TabToggle({
 }
 
 const toggleStyles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderRadius: RADIUS.lg,
-    padding: 4,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    height: 44,
-  },
-  slider: {
-    position: 'absolute',
-    top: 4,
-    bottom: 4,
-    left: 4,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary,
-    shadowColor: COLORS.primary,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  tab: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-    paddingHorizontal: 4,
-  },
-  tabText: {
-    fontSize: FONTS.small,
-    fontWeight: '600',
-    color: COLORS.textMuted,
-    textAlign: 'center',
-  },
-  tabTextActive: {
-    color: COLORS.white,
-    fontWeight: '800',
-  },
+  container: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: RADIUS.lg, padding: 4, marginHorizontal: SPACING.lg, marginBottom: SPACING.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', height: 44 },
+  slider: { position: 'absolute', top: 4, bottom: 4, left: 4, borderRadius: RADIUS.md, backgroundColor: COLORS.primary, shadowColor: COLORS.primary, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 8, elevation: 5 },
+  tab: { alignItems: 'center', justifyContent: 'center', zIndex: 1, paddingHorizontal: 4 },
+  tabText: { fontSize: FONTS.small, fontWeight: '600', color: COLORS.textMuted, textAlign: 'center' },
+  tabTextActive: { color: COLORS.white, fontWeight: '800' },
 });
 
 // ── KART BİLEŞENLERİ ──────────────────────────────────────
-
-function FollowingCard({ item }: { item: typeof DUMMY_FOLLOWING[0] }) {
+function FollowingCard({ item }: { item: any }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity
-      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
-      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
-      activeOpacity={1}
-    >
+    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.followingCard, { transform: [{ scale: scaleAnim }] }]}>
         <View style={styles.followingAvatarWrapper}>
           <View style={[styles.followingAvatar, item.isOnline && styles.followingAvatarOnline]}>
-            <Text style={styles.followingEmoji}>{item.emoji}</Text>
+            <Text style={styles.followingEmoji}>{item.emoji || '💇‍♀️'}</Text>
           </View>
           {item.isOnline && <View style={styles.onlineDot} />}
         </View>
-        <Text style={styles.followingName} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.followingName} numberOfLines={1}>{item.salonName || item.name}</Text>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-function AICard({ item }: { item: { id: string; style: string; color: string; emoji: string } }) {
+// **DEĞİŞİKLİK 1**: Emoji yerine resultImage gösteriliyor ve onPress eklendi
+function AICard({ item, onPress }: { item: any; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
     <TouchableOpacity
+      onPress={onPress}
       onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
       onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
       activeOpacity={1}
     >
       <Animated.View style={[styles.aiCard, { transform: [{ scale: scaleAnim }] }]}>
-        <LinearGradient
-          colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-          style={styles.aiCardGradient}
-        >
-          <Text style={styles.aiCardEmoji}>{item.emoji}</Text>
-          <Text style={styles.aiCardStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-            {item.style}
-          </Text>
-          <Text style={styles.aiCardColor} numberOfLines={1}>
-            {item.color}
-          </Text>
-        </LinearGradient>
+        {item.resultImage ? (
+          <Image source={{ uri: item.resultImage }} style={styles.aiCardImage} />
+        ) : (
+          <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.aiCardGradient}>
+            <Text style={styles.aiCardEmoji}>✂️</Text>
+          </LinearGradient>
+        )}
+        <View style={styles.aiCardDetails}>
+          <Text style={styles.aiCardStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.style}</Text>
+          <Text style={styles.aiCardColor} numberOfLines={1}>{item.color}</Text>
+        </View>
       </Animated.View>
     </TouchableOpacity>
   );
 }
 
-function CampaignCard({ item }: { item: typeof DUMMY_CAMPAIGNS[0] }) {
+function CampaignCard({ item }: { item: any }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity
-      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()}
-      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
-      activeOpacity={1}
-    >
+    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.campaignCard, { transform: [{ scale: scaleAnim }] }]}>
-        <LinearGradient
-          colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']}
-          style={styles.campaignGradient}
-        >
-          <Text style={styles.campaignEmoji}>{item.emoji}</Text>
+        <LinearGradient colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']} style={styles.campaignGradient}>
+          <Text style={styles.campaignEmoji}>{item.emoji || '🎉'}</Text>
           <View style={styles.campaignInfo}>
             <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon}</Text>
-            <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-              {item.title}
-            </Text>
-            <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc}</Text>
+            <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.title}</Text>
+            <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc || item.description}</Text>
           </View>
           <View style={styles.campaignRight}>
             <View style={styles.campaignDate}>
@@ -250,19 +134,13 @@ function CampaignCard({ item }: { item: typeof DUMMY_CAMPAIGNS[0] }) {
   );
 }
 
-function TrendCard({ item }: { item: typeof DUMMY_TRENDING[0] }) {
+function TrendCard({ item }: { item: any }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity
-      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()}
-      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
-      activeOpacity={1}
-    >
+    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.trendCard, { transform: [{ scale: scaleAnim }] }]}>
-        <Text style={styles.trendEmoji}>{item.emoji}</Text>
-        <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-          {item.style}
-        </Text>
+        <Text style={styles.trendEmoji}>{item.emoji || '🔥'}</Text>
+        <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.style}</Text>
         <View style={styles.trendMeta}>
           <Text style={styles.trendTag} numberOfLines={1}>{item.trend}</Text>
           <View style={styles.trendLikes}>
@@ -275,25 +153,15 @@ function TrendCard({ item }: { item: typeof DUMMY_TRENDING[0] }) {
   );
 }
 
-function SponsoredCard({ item }: { item: typeof DUMMY_SPONSORED[0] }) {
+function SponsoredCard({ item }: { item: any }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity
-      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()}
-      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
-      activeOpacity={1}
-    >
+    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.sponsoredCard, { transform: [{ scale: scaleAnim }] }]}>
-        <View style={styles.sponsoredTag}>
-          <Text style={styles.sponsoredTagText}>{item.tag}</Text>
-        </View>
-        <View style={styles.sponsoredAvatar}>
-          <Text style={styles.sponsoredEmoji}>{item.emoji}</Text>
-        </View>
+        <View style={styles.sponsoredTag}><Text style={styles.sponsoredTagText}>{item.tag || 'Reklam'}</Text></View>
+        <View style={styles.sponsoredAvatar}><Text style={styles.sponsoredEmoji}>{item.emoji || '⭐'}</Text></View>
         <View style={styles.sponsoredInfo}>
-          <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
-            {item.name}
-          </Text>
+          <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.name}</Text>
           <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.speciality}</Text>
           <View style={styles.sponsoredMeta}>
             <View style={styles.ratingRow}>
@@ -312,37 +180,15 @@ function SponsoredCard({ item }: { item: typeof DUMMY_SPONSORED[0] }) {
 }
 
 // ── FADE TAB PANEL ─────────────────────────────────────────
-// Tüm paneller her zaman DOM'da. position: 'absolute' sabit —
-// layout atlaması yok. Sadece opacity Animated ile değişiyor.
-// Wrapper'a sabit minHeight verilince pasif paneller yer kaplamaz.
-function FadeTabPanel({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-}) {
+function FadeTabPanel({ active, children }: { active: boolean; children: React.ReactNode; }) {
   const opacity = useRef(new Animated.Value(active ? 1 : 0)).current;
 
   useEffect(() => {
-    Animated.timing(opacity, {
-      toValue: active ? 1 : 0,
-      duration: active ? 200 : 150,
-      useNativeDriver: true,
-    }).start();
+    Animated.timing(opacity, { toValue: active ? 1 : 0, duration: active ? 200 : 150, useNativeDriver: true }).start();
   }, [active]);
 
   return (
-    <Animated.View
-      pointerEvents={active ? 'auto' : 'none'}
-      style={{
-        opacity,
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-      }}
-    >
+    <Animated.View pointerEvents={active ? 'auto' : 'none'} style={{ opacity, position: 'absolute', top: 0, left: 0, right: 0 }}>
       {children}
     </Animated.View>
   );
@@ -356,39 +202,95 @@ export default function CustomerHomeScreen() {
   const [aiTab, setAiTab] = useState(0);
   const [discoverTab, setDiscoverTab] = useState(0);
 
+  // Firestore Data States
+  const [following, setFollowing] = useState<any[]>([]);
+  const [aiTries, setAiTries] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<any[]>([]);
+  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [trending, setTrending] = useState<any[]>([]);
+  const [suggested, setSuggested] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Modal State
+  const [selectedAiItem, setSelectedAiItem] = useState<any>(null);
+
+  // **DEĞİŞİKLİK 3**: Tam ekran fotoğraf için state
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+
+  // Animations
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
-  const contentAnim = useRef(new Animated.Value(30)).current;
   const bannerScale = useRef(new Animated.Value(0.95)).current;
 
   useEffect(() => {
     Animated.parallel([
       Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
       Animated.timing(contentOpacity, { toValue: 1, duration: 600, useNativeDriver: false }),
-      Animated.timing(contentAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
       Animated.spring(bannerScale, { toValue: 1, tension: 50, friction: 7, useNativeDriver: false }),
     ]).start();
   }, []);
+
+  // ── FIREBASE DATA FETCHING ──
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubs: (() => void)[] = [];
+
+    const followsQ = query(collection(db, 'follows'), where('userId', '==', user.uid));
+    unsubs.push(onSnapshot(followsQ, snap => {
+      setFollowing(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    const triesQ = query(collection(db, 'aiTries'), where('customerId', '==', user.uid), orderBy('createdAt', 'desc'));
+    unsubs.push(onSnapshot(triesQ, snap => {
+      setAiTries(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    const favsQ = query(collection(db, 'favorites'), where('customerId', '==', user.uid), orderBy('createdAt', 'desc'));
+    unsubs.push(onSnapshot(favsQ, snap => {
+      setFavorites(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    const campQ = query(collection(db, 'campaigns'), where('status', '==', 'active'));
+    unsubs.push(onSnapshot(campQ, snap => {
+      setCampaigns(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    const trendQ = query(collection(db, 'trending'), limit(5));
+    unsubs.push(onSnapshot(trendQ, snap => {
+      setTrending(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    const sugQ = query(collection(db, 'hairdresserProfiles'), orderBy('averageRating', 'desc'), limit(5));
+    unsubs.push(onSnapshot(sugQ, snap => {
+      setSuggested(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    }));
+
+    return () => unsubs.forEach(u => u());
+  }, [user?.uid]);
 
   const firstName = user?.displayName?.split(' ')[0] || 'Kullanıcı';
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Günaydın' : hour < 18 ? 'İyi günler' : 'İyi akşamlar';
 
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
-        start={{ x: 0.2, y: 0 }}
-        end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.orb1} />
       <View style={styles.orb2} />
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.scrollContent}
-      >
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+
         {/* ── ÜST BAR ── */}
         <Animated.View style={[styles.header, { opacity: headerAnim }]}>
           <View>
@@ -407,17 +309,12 @@ export default function CustomerHomeScreen() {
           </View>
         </Animated.View>
 
-        <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentAnim }] }}>
+        <Animated.View style={{ opacity: contentOpacity }}>
 
           {/* ── AI SAÇ BANNER ── */}
           <Animated.View style={[styles.bannerWrapper, { transform: [{ scale: bannerScale }] }]}>
-            <TouchableOpacity onPress={() => router.replace('/(customer)/ai-hair')} activeOpacity={0.9}>
-              <LinearGradient
-                colors={[COLORS.primaryDark, COLORS.primary, '#C084FC']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.banner}
-              >
+            <TouchableOpacity onPress={() => router.push('/(customer)/ai-hair' as any)} activeOpacity={0.9}>
+              <LinearGradient colors={[COLORS.primaryDark, COLORS.primary, '#C084FC']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.banner}>
                 <View style={styles.bannerContent}>
                   <View style={styles.bannerBadge}>
                     <Text style={styles.bannerBadgeText}>✨ Yapay Zeka</Text>
@@ -441,71 +338,69 @@ export default function CustomerHomeScreen() {
           {/* ── TAKİP ETTİKLERİN ── */}
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>Takip Ettiklerin</Text>
-            <TouchableOpacity onPress={() => router.replace('/(customer)/explore')}>
+            <TouchableOpacity onPress={() => router.push('/(customer)/explore' as any)}>
               <Text style={styles.seeAll}>Tümünü Gör</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.followingList}
-          >
-            {DUMMY_FOLLOWING.map((item) => (
-              <FollowingCard key={item.id} item={item} />
-            ))}
-          </ScrollView>
+
+          {following.length === 0 ? (
+            <TouchableOpacity
+              style={styles.emptyFollowing}
+              onPress={() => router.push('/(customer)/explore' as any)}
+            >
+              <Ionicons name="person-add-outline" size={24} color={COLORS.primary} />
+              <Text style={styles.emptyFollowingText}>Kuaför takip et</Text>
+            </TouchableOpacity>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followingList}>
+              {following.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={styles.followingCard}
+                  onPress={() => router.push(`/hairdresser/${item.hairdresserId}` as any)}
+                >
+                  <View style={styles.followingAvatarWrapper}>
+                    <View style={[styles.followingAvatar, item.isOnline && styles.followingAvatarOnline]}>
+                      <Text style={styles.followingEmoji}>{item.emoji || '✂️'}</Text>
+                    </View>
+                    {item.isOnline && <View style={styles.onlineDot} />}
+                  </View>
+                  <Text style={styles.followingName} numberOfLines={1}>{item.salonName}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
 
           {/* ── TOGGLE 1: SON DENEMELER / FAVORİLER ── */}
-          <TabToggle
-            tabs={['Son Denemeler', 'Favoriler']}
-            activeIndex={aiTab}
-            onPress={setAiTab}
-          />
+          <TabToggle tabs={['Son Denemeler', 'Favoriler']} activeIndex={aiTab} onPress={setAiTab} />
 
-          {/*
-            Her iki panel her zaman mount edilmiş durumda.
-            Aktif olan 'relative' konumda (layout'ta yer kaplıyor),
-            pasif olan 'absolute' konumda (layout'tan çıkmış, görünmez).
-            Böylece tab değişince hiç unmount/remount olmuyor.
-          */}
-          {/* minHeight = kart yüksekliği (110) + paddingBottom (8) */}
           <View style={[styles.tabPanelContainer, { minHeight: 126 }]}>
             <FadeTabPanel active={aiTab === 0}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.aiCardList}
-              >
-                {DUMMY_AI_TRIES.length === 0 ? (
-                  <TouchableOpacity
-                    style={styles.aiEmptyCard}
-                    onPress={() => router.replace('/(customer)/ai-hair')}
-                  >
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.aiCardList}>
+                {aiTries.length === 0 ? (
+                  <TouchableOpacity style={styles.aiEmptyCard} onPress={() => router.push('/(customer)/ai-hair' as any)}>
                     <Ionicons name="sparkles-outline" size={28} color={COLORS.primary} />
                     <Text style={styles.aiEmptyText}>İlk denemeyi yap!</Text>
                   </TouchableOpacity>
                 ) : (
-                  DUMMY_AI_TRIES.map((item) => <AICard key={item.id} item={item} />)
+                  aiTries.map((item) => (
+                    <AICard key={item.id} item={item} onPress={() => setSelectedAiItem(item)} />
+                  ))
                 )}
               </ScrollView>
             </FadeTabPanel>
 
             <FadeTabPanel active={aiTab === 1}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.aiCardList}
-              >
-                {DUMMY_FAVORITES.length === 0 ? (
-                  <TouchableOpacity
-                    style={styles.aiEmptyCard}
-                    onPress={() => router.replace('/(customer)/ai-hair')}
-                  >
-                    <Ionicons name="sparkles-outline" size={28} color={COLORS.primary} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.aiCardList}>
+                {favorites.length === 0 ? (
+                  <TouchableOpacity style={styles.aiEmptyCard} onPress={() => router.push('/(customer)/ai-hair' as any)}>
+                    <Ionicons name="heart-outline" size={28} color={COLORS.primary} />
                     <Text style={styles.aiEmptyText}>Henüz favori yok</Text>
                   </TouchableOpacity>
                 ) : (
-                  DUMMY_FAVORITES.map((item) => <AICard key={item.id} item={item} />)
+                  favorites.map((item) => (
+                    <AICard key={item.id} item={item} onPress={() => setSelectedAiItem(item)} />
+                  ))
                 )}
               </ScrollView>
             </FadeTabPanel>
@@ -515,38 +410,95 @@ export default function CustomerHomeScreen() {
           <View style={[styles.sectionHeader, { marginTop: SPACING.xl }]}>
             <Text style={styles.sectionTitle}>Keşfet</Text>
           </View>
-          <TabToggle
-            tabs={['Kampanyalar', 'Popüler', 'Önerilen']}
-            activeIndex={discoverTab}
-            onPress={setDiscoverTab}
-          />
+          <TabToggle tabs={['Kampanyalar', 'Popüler', 'Önerilen']} activeIndex={discoverTab} onPress={setDiscoverTab} />
 
-          {/* minHeight: en uzun panel olan Kampanyalar için — 3×72 + 2×12 gap = 240 */}
           <View style={[styles.tabPanelContainer, { minHeight: 240, paddingHorizontal: SPACING.lg }]}>
+
+            {/* KAMPANYALAR */}
             <FadeTabPanel active={discoverTab === 0}>
               <View style={styles.discoverList}>
-                {DUMMY_CAMPAIGNS.map((item) => (
-                  <CampaignCard key={item.id} item={item} />
-                ))}
+                {campaigns.length === 0 ? (
+                  <View style={styles.emptyDiscover}>
+                    <Text style={styles.emptyDiscoverText}>Aktif kampanya yok</Text>
+                  </View>
+                ) : (
+                  campaigns.slice(0, 4).map((item) => (
+                    <TouchableOpacity key={item.id} style={styles.campaignCard} activeOpacity={0.85}>
+                      <LinearGradient colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']} style={styles.campaignGradient}>
+                        <Text style={styles.campaignEmoji}>{item.emoji || '🎉'}</Text>
+                        <View style={styles.campaignInfo}>
+                          <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon}</Text>
+                          <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.title}</Text>
+                          <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc}</Text>
+                        </View>
+                        <View style={styles.campaignRight}>
+                          <View style={styles.campaignDate}>
+                            <Ionicons name="time-outline" size={10} color={COLORS.textMuted} />
+                            <Text style={styles.campaignDateText}>{item.validUntil}</Text>
+                          </View>
+                          <View style={styles.campaignButton}>
+                            <Text style={styles.campaignButtonText}>Kullan</Text>
+                          </View>
+                        </View>
+                      </LinearGradient>
+                    </TouchableOpacity>
+                  ))
+                )}
               </View>
             </FadeTabPanel>
 
+            {/* POPÜLER */}
             <FadeTabPanel active={discoverTab === 1}>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}
-              >
-                {DUMMY_TRENDING.map((item) => (
-                  <TrendCard key={item.id} item={item} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}>
+                {trending.map((item) => (
+                  <TouchableOpacity key={item.id} style={styles.trendCard} activeOpacity={0.85}>
+                    <Text style={styles.trendEmoji}>{item.emoji}</Text>
+                    <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.style}</Text>
+                    <View style={styles.trendMeta}>
+                      <Text style={styles.trendTag} numberOfLines={1}>{item.trend}</Text>
+                      <View style={styles.trendLikes}>
+                        <Ionicons name="heart" size={10} color={COLORS.error} />
+                        <Text style={styles.trendLikesText}>{item.likes}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             </FadeTabPanel>
 
+            {/* ÖNERİLEN KUAFÖRLER */}
             <FadeTabPanel active={discoverTab === 2}>
               <View style={styles.discoverList}>
-                {DUMMY_SPONSORED.map((item) => (
-                  <SponsoredCard key={item.id} item={item} />
+                {suggested.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={styles.sponsoredCard}
+                    onPress={() => router.push(`/hairdresser/${item.uid || item.id}` as any)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={styles.sponsoredAvatar}>
+                      <Text style={styles.sponsoredEmoji}>✂️</Text>
+                    </View>
+                    <View style={styles.sponsoredInfo}>
+                      <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.salonName}</Text>
+                      <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.city}</Text>
+                      <View style={styles.sponsoredMeta}>
+                        <View style={styles.ratingRow}>
+                          <Ionicons name="star" size={11} color="#FFB844" />
+                          <Text style={styles.ratingText}>{(item.averageRating || 0).toFixed(1)}</Text>
+                        </View>
+                        <Text style={styles.sponsoredPrice}>
+                          {item.services && item.services.length > 0 ? `₺${Math.min(...item.services.map((s: any) => s.price))}+` : ''}
+                        </Text>
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.bookButton}
+                      onPress={() => router.push(`/hairdresser/${item.uid || item.id}` as any)}
+                    >
+                      <Text style={styles.bookButtonText}>Randevu</Text>
+                    </TouchableOpacity>
+                  </TouchableOpacity>
                 ))}
               </View>
             </FadeTabPanel>
@@ -554,451 +506,180 @@ export default function CustomerHomeScreen() {
 
         </Animated.View>
       </ScrollView>
+
+
+
+      {/* ── TEK MODAL (KOŞULLU RENDER İLE) ── */}
+      <Modal
+        visible={!!selectedAiItem}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          // Geri tuşuna basıldığında önce tam ekranı kapat, yoksa modalı kapat
+          if (fullscreenImage) setFullscreenImage(null);
+          else setSelectedAiItem(null);
+        }}
+      >
+        {fullscreenImage ? (
+          /* TAM EKRAN GÖRÜNÜMÜ */
+          <TouchableOpacity style={styles.fullscreenOverlay} activeOpacity={1} onPress={() => setFullscreenImage(null)}>
+            <Image source={{ uri: fullscreenImage }} style={styles.fullscreenImage} resizeMode="contain" />
+            <TouchableOpacity style={styles.fullscreenClose} onPress={() => setFullscreenImage(null)}>
+              <Ionicons name="close-circle" size={40} color={COLORS.white} />
+            </TouchableOpacity>
+          </TouchableOpacity>
+        ) : (
+          /* ÖNCESİ / SONRASI GÖRÜNÜMÜ */
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity style={styles.modalCloseArea} onPress={() => setSelectedAiItem(null)} activeOpacity={1} />
+
+            <View style={styles.modalContent}>
+              <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setSelectedAiItem(null)}>
+                <Ionicons name="close-circle" size={32} color={COLORS.textMuted} />
+              </TouchableOpacity>
+
+              <Text style={styles.modalTitle}>{selectedAiItem?.style}</Text>
+              <Text style={styles.modalSubtitle}>{selectedAiItem?.color}</Text>
+
+              <View style={styles.comparisonContainer}>
+                {/* Eski Fotoğraf (Sol) */}
+                <View style={styles.comparisonHalf}>
+                  <Text style={styles.comparisonLabel}>Öncesi</Text>
+                  {selectedAiItem?.originalImage ? (
+                    <TouchableOpacity onPress={() => setFullscreenImage(selectedAiItem.originalImage)}>
+                      <Image source={{ uri: selectedAiItem.originalImage }} style={styles.comparisonImg} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.placeholderImg}><Text style={{ color: '#555' }}>Görsel Yok</Text></View>
+                  )}
+                </View>
+
+                {/* Yeni Fotoğraf (Sağ) */}
+                <View style={styles.comparisonHalf}>
+                  <Text style={styles.comparisonLabel}>Sonrası</Text>
+                  {selectedAiItem?.resultImage ? (
+                    <TouchableOpacity onPress={() => setFullscreenImage(selectedAiItem.resultImage)}>
+                      <Image source={{ uri: selectedAiItem.resultImage }} style={styles.comparisonImg} />
+                    </TouchableOpacity>
+                  ) : (
+                    <View style={styles.placeholderImg}><Text style={{ color: '#555' }}>Görsel Yok</Text></View>
+                  )}
+                </View>
+              </View>
+            </View>
+          </View>
+        )}
+      </Modal>
+
+
     </View>
   );
 }
 
+// ─── STİLLER ───────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  orb1: {
-    position: 'absolute',
-    width: 300,
-    height: 300,
-    borderRadius: 150,
-    backgroundColor: '#7C3AED',
-    opacity: 0.15,
-    top: -100,
-    right: -80,
-  },
-  orb2: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    backgroundColor: '#A78BFA',
-    opacity: 0.08,
-    bottom: 300,
-    left: -60,
-  },
-  scrollContent: {
-    paddingTop: 56,
-    paddingBottom: 180,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.xl,
-  },
-  greeting: {
-    fontSize: FONTS.medium,
-    color: COLORS.textSecondary,
-  },
-  userName: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    letterSpacing: 0.3,
-  },
-  headerRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  coinBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: 'rgba(212,160,23,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(212,160,23,0.3)',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: RADIUS.full,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
+  orb1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: '#7C3AED', opacity: 0.15, top: -100, right: -80 },
+  orb2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: '#A78BFA', opacity: 0.08, bottom: 300, left: -60 },
+  scrollContent: { paddingTop: 56, paddingBottom: 180 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
+  greeting: { fontSize: FONTS.medium, color: COLORS.textSecondary },
+  userName: { fontSize: 26, fontWeight: 'bold', color: COLORS.textPrimary, letterSpacing: 0.3 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  coinBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(212,160,23,0.15)', borderWidth: 1, borderColor: 'rgba(212,160,23,0.3)', paddingVertical: 6, paddingHorizontal: 10, borderRadius: RADIUS.full },
   coinBadgeEmoji: { fontSize: 14 },
-  coinBadgeText: {
-    fontSize: FONTS.small,
-    fontWeight: 'bold',
-    color: '#D4A017',
-  },
-  notifButton: {
-    width: 40,
-    height: 40,
-    borderRadius: RADIUS.md,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  notifDot: {
-    position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: COLORS.error,
-    borderWidth: 1.5,
-    borderColor: COLORS.background,
-  },
-  bannerWrapper: {
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.xl,
-  },
-  banner: {
-    borderRadius: RADIUS.xl,
-    padding: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    minHeight: 160,
-    overflow: 'hidden',
-  },
+  coinBadgeText: { fontSize: FONTS.small, fontWeight: 'bold', color: '#D4A017' },
+  notifButton: { width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center' },
+  notifDot: { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.error, borderWidth: 1.5, borderColor: COLORS.background },
+  bannerWrapper: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
+  banner: { borderRadius: RADIUS.xl, padding: SPACING.lg, flexDirection: 'row', alignItems: 'center', minHeight: 160, overflow: 'hidden' },
   bannerContent: { flex: 1, gap: SPACING.xs },
-  bannerBadge: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  bannerBadgeText: {
-    fontSize: FONTS.small,
-    color: COLORS.white,
-    fontWeight: '600',
-  },
-  bannerTitle: {
-    fontSize: FONTS.xlarge,
-    fontWeight: 'bold',
-    color: COLORS.white,
-    lineHeight: 28,
-  },
-  bannerSubtitle: {
-    fontSize: FONTS.small,
-    color: 'rgba(255,255,255,0.8)',
-    lineHeight: 18,
-  },
-  bannerButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: SPACING.sm,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    paddingVertical: 8,
-    paddingHorizontal: 14,
-    borderRadius: RADIUS.full,
-    alignSelf: 'flex-start',
-  },
-  bannerButtonText: {
-    fontSize: FONTS.small,
-    color: COLORS.white,
-    fontWeight: '700',
-  },
-  bannerDecor: {
-    position: 'relative',
-    width: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  bannerBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, alignSelf: 'flex-start', marginBottom: 4 },
+  bannerBadgeText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '600' },
+  bannerTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.white, lineHeight: 28 },
+  bannerSubtitle: { fontSize: FONTS.small, color: 'rgba(255,255,255,0.8)', lineHeight: 18 },
+  bannerButton: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.25)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS.full, alignSelf: 'flex-start' },
+  bannerButtonText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '700' },
+  bannerDecor: { position: 'relative', width: 90, alignItems: 'center', justifyContent: 'center' },
   bannerDecorEmoji: { fontSize: 64, zIndex: 2 },
-  bannerDecorCircle1: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  bannerDecorCircle2: {
-    position: 'absolute',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: FONTS.large,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-  },
-  seeAll: {
-    fontSize: FONTS.small,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  followingList: {
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-    marginBottom: SPACING.xl,
-  },
-  followingCard: {
-    alignItems: 'center',
-    gap: SPACING.xs,
-    width: 68,
-  },
+  bannerDecorCircle1: { position: 'absolute', width: 80, height: 80, borderRadius: 40, backgroundColor: 'rgba(255,255,255,0.1)' },
+  bannerDecorCircle2: { position: 'absolute', width: 60, height: 60, borderRadius: 30, backgroundColor: 'rgba(255,255,255,0.08)' },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, marginBottom: SPACING.md },
+  sectionTitle: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.textPrimary },
+  seeAll: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
+  emptyFollowing: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, marginHorizontal: SPACING.lg, marginBottom: SPACING.xl, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed' },
+  emptyFollowingText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
+  followingList: { paddingHorizontal: SPACING.lg, gap: SPACING.md, marginBottom: SPACING.xl },
+  followingCard: { alignItems: 'center', gap: SPACING.xs, width: 68 },
   followingAvatarWrapper: { position: 'relative' },
-  followingAvatar: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 2,
-    borderColor: COLORS.border,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  followingAvatar: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center' },
   followingAvatarOnline: { borderColor: COLORS.primary },
   followingEmoji: { fontSize: 26 },
-  onlineDot: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: COLORS.success,
-    borderWidth: 2,
-    borderColor: COLORS.background,
-  },
-  followingName: {
-    fontSize: 10,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    fontWeight: '500',
-  },
-  // Tab panel wrapper — pasif paneller absolute ile üst üste oturur
-  tabPanelContainer: {
-    position: 'relative',
-    marginBottom: SPACING.lg,
-  },
-  aiCardList: {
-    paddingHorizontal: SPACING.lg,
-    gap: SPACING.md,
-    paddingBottom: SPACING.sm,
-  },
-  // SABİT yükseklik — yazı uzasa da kutu büyümez
-  aiCard: {
-    width: 110,
-    height: 110,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  aiCardGradient: {
-    flex: 1,
-    padding: SPACING.md,
-    alignItems: 'center',
-    gap: SPACING.xs,
-    justifyContent: 'center',
-  },
+  onlineDot: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.success, borderWidth: 2, borderColor: COLORS.background },
+  followingName: { fontSize: 10, color: COLORS.textSecondary, textAlign: 'center', fontWeight: '500' },
+  tabPanelContainer: { position: 'relative', marginBottom: SPACING.lg },
+  aiCardList: { paddingHorizontal: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.sm },
+  aiCard: { width: 110, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, backgroundColor: 'rgba(255,255,255,0.04)' },
+  // **DEĞİŞİKLİK 1**: Kart stili güncellendi
+  aiCardImage: { width: '100%', height: 110 },
+  aiCardGradient: { width: '100%', height: 110, alignItems: 'center', justifyContent: 'center' },
   aiCardEmoji: { fontSize: 32 },
-  aiCardStyle: {
-    fontSize: FONTS.small,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
-  aiCardColor: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-  },
-  aiEmptyCard: {
-    width: 140,
-    height: 110,
-    borderRadius: RADIUS.lg,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderStyle: 'dashed',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  aiEmptyText: {
-    fontSize: FONTS.small,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  discoverList: {
-    gap: SPACING.md,
-    paddingBottom: SPACING.md,
-  },
-  // SABİT yükseklik — tüm kampanya kartları aynı boy
-  campaignCard: {
-    height: 72,
-    borderRadius: RADIUS.lg,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  campaignGradient: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    gap: SPACING.md,
-  },
+  aiCardDetails: { padding: SPACING.xs, alignItems: 'center' },
+  aiCardStyle: { fontSize: 9, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center' },
+  aiCardColor: { fontSize: 8, color: COLORS.textMuted, textAlign: 'center' },
+  aiEmptyCard: { width: 140, height: 130, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: COLORS.border, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', gap: SPACING.sm },
+  aiEmptyText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
+  discoverList: { gap: SPACING.md, paddingBottom: SPACING.md },
+  emptyDiscover: { padding: SPACING.xl, alignItems: 'center' },
+  emptyDiscoverText: { fontSize: FONTS.small, color: COLORS.textMuted },
+  campaignCard: { height: 62,  borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 2, borderColor: COLORS.border },
+  campaignGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, gap: SPACING.md },
   campaignEmoji: { fontSize: 28 },
   campaignInfo: { flex: 1, gap: 1, overflow: 'hidden' },
   campaignSalon: { fontSize: 10, color: COLORS.textMuted },
-  campaignTitle: {
-    fontSize: FONTS.medium,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
-  campaignDesc: {
-    fontSize: FONTS.small,
-    color: COLORS.textSecondary,
-  },
-  campaignRight: {
-    alignItems: 'flex-end',
-    gap: SPACING.sm,
-    flexShrink: 0,
-  },
-  campaignDate: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
+  campaignTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.primary },
+  campaignDesc: { fontSize: FONTS.small, color: COLORS.textSecondary },
+  campaignRight: { alignItems: 'flex-end', gap: SPACING.sm, flexShrink: 0 },
+  campaignDate: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   campaignDateText: { fontSize: 10, color: COLORS.textMuted },
-  campaignButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 5,
-    paddingHorizontal: 12,
-    borderRadius: RADIUS.full,
-  },
-  campaignButtonText: {
-    fontSize: 11,
-    color: COLORS.white,
-    fontWeight: '700',
-  },
-  // SABİT yükseklik — trend kartları
-  trendCard: {
-    width: 110,
-    height: 110,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.lg,
-    padding: SPACING.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: SPACING.xs,
-    overflow: 'hidden',
-  },
+  campaignButton: { backgroundColor: COLORS.primary, paddingVertical: 5, paddingHorizontal: 12, borderRadius: RADIUS.full },
+  campaignButtonText: { fontSize: 11, color: COLORS.white, fontWeight: '700' },
+  trendCard: { width: 110, height: 110, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.lg, padding: SPACING.md, alignItems: 'center', justifyContent: 'center', gap: SPACING.xs, overflow: 'hidden' },
   trendEmoji: { fontSize: 28 },
-  trendStyle: {
-    fontSize: FONTS.small,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-    textAlign: 'center',
-  },
+  trendStyle: { fontSize: FONTS.small, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center' },
   trendMeta: { alignItems: 'center', gap: 3 },
-  trendTag: {
-    fontSize: 10,
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  trendLikes: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
+  trendTag: { fontSize: 10, color: COLORS.primary, fontWeight: '600' },
+  trendLikes: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   trendLikesText: { fontSize: 10, color: COLORS.textMuted },
-  // SABİT yükseklik — önerilen kuaför kartları
-  sponsoredCard: {
-    height: 80,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.xl,
-    paddingHorizontal: SPACING.md,
-    gap: SPACING.md,
-    overflow: 'hidden',
-  },
-  sponsoredTag: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    backgroundColor: '#D4A01722',
-    paddingVertical: 2,
-    paddingHorizontal: 7,
-    borderRadius: RADIUS.full,
-    borderWidth: 1,
-    borderColor: '#D4A01744',
-  },
-  sponsoredTagText: {
-    fontSize: 9,
-    color: '#D4A017',
-    fontWeight: '700',
-  },
-  sponsoredAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primary + '22',
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-  },
+  sponsoredCard: { height: 80, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.xl, paddingHorizontal: SPACING.md, gap: SPACING.md, overflow: 'hidden' },
+  sponsoredTag: { position: 'absolute', top: 10, right: 10, backgroundColor: '#D4A01722', paddingVertical: 2, paddingHorizontal: 7, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#D4A01744' },
+  sponsoredTagText: { fontSize: 9, color: '#D4A017', fontWeight: '700' },
+  sponsoredAvatar: { width: 48, height: 48, borderRadius: RADIUS.md, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
   sponsoredEmoji: { fontSize: 24 },
   sponsoredInfo: { flex: 1, gap: 2, overflow: 'hidden' },
-  sponsoredName: {
-    fontSize: FONTS.medium,
-    fontWeight: 'bold',
-    color: COLORS.textPrimary,
-  },
-  sponsoredSpeciality: {
-    fontSize: FONTS.small,
-    color: COLORS.textSecondary,
-  },
-  sponsoredMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 2,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 3,
-  },
-  ratingText: {
-    fontSize: FONTS.small,
-    color: '#FFB844',
-    fontWeight: 'bold',
-  },
-  sponsoredPrice: {
-    fontSize: FONTS.small,
-    color: COLORS.success,
-    fontWeight: '600',
-  },
-  bookButton: {
-    backgroundColor: COLORS.primary,
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: RADIUS.md,
-    flexShrink: 0,
-  },
-  bookButtonText: {
-    fontSize: 11,
-    color: COLORS.white,
-    fontWeight: '700',
-  },
+  sponsoredName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
+  sponsoredSpeciality: { fontSize: FONTS.small, color: COLORS.textSecondary },
+  sponsoredMeta: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 },
+  ratingRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  ratingText: { fontSize: FONTS.small, color: '#FFB844', fontWeight: 'bold' },
+  sponsoredPrice: { fontSize: FONTS.small, color: COLORS.success, fontWeight: '600' },
+  bookButton: { backgroundColor: COLORS.primary, paddingVertical: 8, paddingHorizontal: 10, borderRadius: RADIUS.md, flexShrink: 0 },
+  bookButtonText: { fontSize: 11, color: COLORS.white, fontWeight: '700' },
+  // Modal Stilleri
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
+  modalCloseArea: { position: 'absolute', width: '100%', height: '100%' },
+  modalContent: { width: '90%', backgroundColor: '#1A0533', borderRadius: RADIUS.xl, padding: SPACING.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', zIndex: 2 },
+  modalCloseBtn: { position: 'absolute', top: 10, right: 10, zIndex: 10 },
+  modalTitle: { color: COLORS.white, fontSize: FONTS.xlarge, fontWeight: 'bold', marginTop: 10 },
+  modalSubtitle: { color: COLORS.primary, fontSize: FONTS.medium, fontWeight: '600', marginBottom: SPACING.xl },
+  // **DEĞİŞİKLİK 2**: Modalda fotoğraflar daha büyük
+  comparisonContainer: { flexDirection: 'row', width: '100%', gap: SPACING.md, minHeight: width * 0.6 },
+  comparisonHalf: { flex: 1, alignItems: 'center' },
+  comparisonLabel: { color: COLORS.textMuted, fontSize: FONTS.small, marginBottom: 5, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1 },
+  comparisonImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  placeholderImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  // **DEĞİŞİKLİK 3**: Tam ekran stilleri
+  fullscreenOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
+  fullscreenImage: { width: '100%', height: '100%' },
+  fullscreenClose: { position: 'absolute', top: 50, right: 20 },
 });

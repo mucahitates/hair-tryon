@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR DASHBOARD (app/(hairdresser)/index.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/index.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -12,6 +9,7 @@ import {
   Animated,
   Dimensions,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,45 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+// FIREBASE IMPORTS
+import { collection, query, where, onSnapshot, doc, updateDoc, orderBy, limit } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+
 const { width } = Dimensions.get('window');
-
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_NEXT_APPOINTMENT = {
-  customerName: 'Ayşe Kaya',
-  customerEmoji: '👩',
-  service: 'Balayage',
-  time: '10:00',
-  duration: '2 saat',
-  color: '#A78BFA',
-  minutesLeft: 47,
-};
-
-const DUMMY_SCHEDULE = [
-  { id: 's1', customerName: 'Ayşe Kaya', customerEmoji: '👩', service: 'Balayage', time: '10:00', duration: 120, color: '#A78BFA', status: 'upcoming' },
-  { id: 's2', customerName: 'Fatma Şahin', customerEmoji: '👩‍🦱', service: 'Keratin Bakım', time: '13:30', duration: 90, color: '#34D399', status: 'upcoming' },
-  { id: 's3', customerName: 'Zeynep Mart', customerEmoji: '👩‍🦰', service: 'Wolf Cut', time: '16:00', duration: 60, color: '#60A5FA', status: 'upcoming' },
-];
-
-const DUMMY_MESSAGES = [
-  { id: 'm1', customerName: 'Merve Yıldız', customerEmoji: '👱‍♀️', message: 'Balayage için fiyat sorabilir miyim?', time: '5 dk önce', unread: true, chatId: 'chat1' },
-  { id: 'm2', customerName: 'Selin Arslan', customerEmoji: '👩‍🦳', message: 'Yarın müsaitiniz var mı?', time: '23 dk önce', unread: true, chatId: 'chat2' },
-  { id: 'm3', customerName: 'Elif Demir', customerEmoji: '👩‍🦱', message: 'Teşekkürler, çok güzel oldu!', time: '1 saat önce', unread: false, chatId: 'chat3' },
-];
-
-const DUMMY_ACTIONS = [
-  { id: 'a1', type: 'message', text: '3 okunmamış mesaj', icon: 'chatbubble-outline', color: '#A78BFA', count: 3 },
-  { id: 'a2', type: 'bid', text: '5 bekleyen teklif', icon: 'pricetag-outline', color: '#FFB844', count: 5 },
-  { id: 'a3', type: 'appointment', text: '2 onay bekleyen randevu', icon: 'calendar-outline', color: '#F472B6', count: 2 },
-];
-
-const DUMMY_CARI = {
-  totalEarning: 12450,
-  totalExpense: 2300,
-  netProfit: 10150,
-  totalJobs: 124,
-  thisMonth: 3200,
-  lastMonth: 2800,
-};
 
 // ─── BÖLÜM BAŞLIĞI ─────────────────────────────────────────
 function SectionTitle({ title, icon, action, onAction }: {
@@ -88,6 +52,10 @@ const sectionStyles = StyleSheet.create({
 // ─── GERİ SAYIM BİLEŞENİ ───────────────────────────────────
 function CountdownTimer({ minutes }: { minutes: number }) {
   const [timeLeft, setTimeLeft] = useState(minutes * 60);
+
+  useEffect(() => {
+    setTimeLeft(minutes * 60);
+  }, [minutes]);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -136,7 +104,16 @@ const countdownStyles = StyleSheet.create({
 export default function HairdresserDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
+  
+  // Canlı Veri State'leri
   const [isOnline, setIsOnline] = useState(true);
+  const [salonName, setSalonName] = useState('Yükleniyor...');
+  const [nextAppointment, setNextAppointment] = useState<any>(null);
+  const [schedule, setSchedule] = useState<any[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [actions, setActions] = useState<any[]>([]);
+  const [cari, setCari] = useState({ totalEarning: 0, totalExpense: 0, netProfit: 0, totalJobs: 0, thisMonth: 0, lastMonth: 0 });
+  const [loading, setLoading] = useState(true);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
@@ -150,8 +127,98 @@ export default function HairdresserDashboard() {
     ]).start();
   }, []);
 
+  // ── FIREBASE GERÇEK ZAMANLI BAĞLANTI ──
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubs: (() => void)[] = [];
+
+    // 1. Profil ve Cari Durumu Dinle
+    const profRef = doc(db, 'hairdresserProfiles', user.uid);
+    unsubs.push(onSnapshot(profRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const profData = docSnap.data();
+        setSalonName(profData.salonName || 'Salon Adı Belirtilmemiş');
+        setIsOnline(profData.isOnline ?? true);
+        if (profData.cariSummary) {
+          setCari(profData.cariSummary);
+        }
+      }
+    }));
+
+    // 2. Randevuları Dinle (Bugünkü Program & Sıradaki Randevu)
+    const appQ = query(
+      collection(db, 'appointments'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('time', 'asc')
+    );
+    unsubs.push(onSnapshot(appQ, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      setSchedule(list);
+
+      // Sıradaki ilk randevuyu ayarla (durumu 'upcoming' olan ilk randevu)
+      const next = list.find((a: any) => a.status === 'upcoming');
+      if (next) {
+        setNextAppointment(next);
+      } else {
+        setNextAppointment(null);
+      }
+    }));
+
+    // 3. Mesajları Dinle
+    const msgQ = query(
+      collection(db, 'chats'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('lastMessageTime', 'desc'),
+      limit(3)
+    );
+    unsubs.push(onSnapshot(msgQ, (snap) => {
+      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    // 4. Aksiyon Sayaçlarını Dinle (Okunmamış Mesaj, Teklif, Onay Bekleyen)
+    const actionQ = query(collection(db, 'hairdresserActions'), where('hairdresserId', '==', user.uid));
+    unsubs.push(onSnapshot(actionQ, (snap) => {
+      if (!snap.empty) {
+        setActions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } else {
+        // Altyapı dokümanı yoksa varsayılan şablonu koru
+        setActions([
+          { id: 'a1', type: 'message', text: 'Okunmamış mesajlar', icon: 'chatbubble-outline', color: '#A78BFA', count: 0 },
+          { id: 'a2', type: 'bid', text: 'Bekleyen teklifler', icon: 'pricetag-outline', color: '#FFB844', count: 0 },
+          { id: 'a3', type: 'appointment', text: 'Onay bekleyen randevular', icon: 'calendar-outline', color: '#F472B6', count: 0 },
+        ]);
+      }
+      setLoading(false);
+    }));
+
+    return () => unsubs.forEach(u => u());
+  }, [user?.uid]);
+
+  // Çevrimiçi durumunu Firestore'da güncelleme fonksiyonu
+  const handleOnlineToggle = async (value: boolean) => {
+    if (!user?.uid) return;
+    setIsOnline(value);
+    try {
+      await updateDoc(doc(db, 'hairdresserProfiles', user.uid), {
+        isOnline: value
+      });
+    } catch (e) {
+      console.error("Durum güncellenemedi:", e);
+    }
+  };
+
   const now = new Date();
   const dateStr = now.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -177,7 +244,7 @@ export default function HairdresserDashboard() {
                 <Text style={styles.welcomeName}>
                   Merhaba, {user?.displayName?.split(' ')[0] || 'Kuaför'} 👋
                 </Text>
-                <Text style={styles.welcomeSub}>Salon Elegance</Text>
+                <Text style={styles.welcomeSub}>{salonName}</Text>
               </View>
               <View style={styles.onlineToggle}>
                 <View style={[styles.onlineDot, { backgroundColor: isOnline ? COLORS.success : COLORS.textMuted }]} />
@@ -186,7 +253,7 @@ export default function HairdresserDashboard() {
                 </Text>
                 <Switch
                   value={isOnline}
-                  onValueChange={setIsOnline}
+                  onValueChange={handleOnlineToggle}
                   trackColor={{ false: COLORS.border, true: COLORS.success + '88' }}
                   thumbColor={isOnline ? COLORS.success : COLORS.textMuted}
                 />
@@ -197,17 +264,19 @@ export default function HairdresserDashboard() {
             <View style={styles.welcomeBadges}>
               <View style={styles.welcomeBadge}>
                 <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.welcomeBadgeText}>{DUMMY_SCHEDULE.length} randevu</Text>
+                <Text style={styles.welcomeBadgeText}>{schedule.length} randevu</Text>
               </View>
               <View style={styles.welcomeBadgeDivider} />
               <View style={styles.welcomeBadge}>
                 <Ionicons name="time-outline" size={14} color='#FFB844' />
-                <Text style={styles.welcomeBadgeText}>5 bekleyen</Text>
+                <Text style={styles.welcomeBadgeText}>
+                  {(actions.find(a => a.type === 'bid')?.count || 0)} bekleyen
+                </Text>
               </View>
               <View style={styles.welcomeBadgeDivider} />
               <View style={styles.welcomeBadge}>
                 <Ionicons name="cash-outline" size={14} color='#34D399' />
-                <Text style={styles.welcomeBadgeText}>₺{DUMMY_CARI.thisMonth} bu ay</Text>
+                <Text style={styles.welcomeBadgeText}>₺{cari.thisMonth.toLocaleString()} bu ay</Text>
               </View>
             </View>
           </LinearGradient>
@@ -219,7 +288,7 @@ export default function HairdresserDashboard() {
           <View style={styles.section}>
             <SectionTitle title="Aksiyona İhtiyaç Var" icon="alert-circle-outline" />
             <View style={styles.actionsNeededGrid}>
-              {DUMMY_ACTIONS.map((action) => (
+              {actions.map((action) => (
                 <TouchableOpacity
                   key={action.id}
                   style={styles.actionNeededCard}
@@ -241,7 +310,7 @@ export default function HairdresserDashboard() {
                         <Text style={styles.actionNeededBadgeText}>{action.count}</Text>
                       </View>
                     </View>
-                    <Text style={styles.actionNeededText}>{action.text}</Text>
+                    <Text style={styles.actionNeededText}>{action.count} {action.text}</Text>
                     <View style={styles.actionNeededArrow}>
                       <Text style={[styles.actionNeededGo, { color: action.color }]}>Git →</Text>
                     </View>
@@ -252,34 +321,43 @@ export default function HairdresserDashboard() {
           </View>
 
           {/* ── 3. SIRADAKI RANDEVU — GERİ SAYIM ── */}
-          <View style={styles.section}>
-            <SectionTitle title="Sıradaki Randevu" icon="time-outline" />
-            <LinearGradient
-              colors={[DUMMY_NEXT_APPOINTMENT.color + '44', DUMMY_NEXT_APPOINTMENT.color + '22']}
-              style={styles.nextAppCard}
-            >
-              <View style={styles.nextAppTop}>
-                <View style={styles.nextAppLeft}>
-                  <View style={[styles.nextAppAvatar, { backgroundColor: DUMMY_NEXT_APPOINTMENT.color + '33' }]}>
-                    <Text style={styles.nextAppEmoji}>{DUMMY_NEXT_APPOINTMENT.customerEmoji}</Text>
-                  </View>
-                  <View>
-                    <Text style={styles.nextAppName}>{DUMMY_NEXT_APPOINTMENT.customerName}</Text>
-                    <Text style={styles.nextAppService}>{DUMMY_NEXT_APPOINTMENT.service}</Text>
-                    <View style={styles.nextAppMeta}>
-                      <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />
-                      <Text style={styles.nextAppTime}>{DUMMY_NEXT_APPOINTMENT.time} · {DUMMY_NEXT_APPOINTMENT.duration}</Text>
+          {nextAppointment ? (
+            <View style={styles.section}>
+              <SectionTitle title="Sıradaki Randevu" icon="time-outline" />
+              <LinearGradient
+                colors={[(nextAppointment.color || '#A78BFA') + '44', (nextAppointment.color || '#A78BFA') + '22']}
+                style={styles.nextAppCard}
+              >
+                <View style={styles.nextAppTop}>
+                  <View style={styles.nextAppLeft}>
+                    <View style={[styles.nextAppAvatar, { backgroundColor: (nextAppointment.color || '#A78BFA') + '33' }]}>
+                      <Text style={styles.nextAppEmoji}>{nextAppointment.customerEmoji || '👩'}</Text>
+                    </View>
+                    <View>
+                      <Text style={styles.nextAppName}>{nextAppointment.customerName}</Text>
+                      <Text style={styles.nextAppService}>{nextAppointment.service}</Text>
+                      <View style={styles.nextAppMeta}>
+                        <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />
+                        <Text style={styles.nextAppTime}>{nextAppointment.time} · {nextAppointment.duration || '60 dk'}</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
 
-              <View style={styles.countdownSection}>
-                <Text style={styles.countdownLabel}>Kalan Süre</Text>
-                <CountdownTimer minutes={DUMMY_NEXT_APPOINTMENT.minutesLeft} />
+                <View style={styles.countdownSection}>
+                  <Text style={styles.countdownLabel}>Kalan Süre</Text>
+                  <CountdownTimer minutes={nextAppointment.minutesLeft || 45} />
+                </View>
+              </LinearGradient>
+            </View>
+          ) : (
+            <View style={styles.section}>
+              <SectionTitle title="Sıradaki Randevu" icon="time-outline" />
+              <View style={[styles.nextAppCard, { justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, backgroundColor: 'rgba(255,255,255,0.03)' }]}>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small }}>Yaklaşan randevunuz bulunmuyor.</Text>
               </View>
-            </LinearGradient>
-          </View>
+            </View>
+          )}
 
           {/* ── 4. BUGÜNKÜ PROGRAM ── */}
           <View style={styles.section}>
@@ -290,37 +368,41 @@ export default function HairdresserDashboard() {
               onAction={() => router.push('/(hairdresser)/appointments' as any)}
             />
             <View style={styles.scheduleCard}>
-              {DUMMY_SCHEDULE.map((item, index) => (
-                <View key={item.id}>
-                  <View style={styles.scheduleRow}>
-                    {/* Sol zaman sütunu */}
-                    <View style={styles.scheduleTimeCol}>
-                      <Text style={[styles.scheduleTime, { color: item.color }]}>{item.time}</Text>
-                      <Text style={styles.scheduleDuration}>{item.duration} dk</Text>
-                    </View>
+              {schedule.length === 0 ? (
+                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small, textAlign: 'center', padding: SPACING.md }}>Bugün için randevu planlanmadı.</Text>
+              ) : (
+                schedule.map((item, index) => (
+                  <View key={item.id}>
+                    <View style={styles.scheduleRow}>
+                      {/* Sol zaman sütunu */}
+                      <View style={styles.scheduleTimeCol}>
+                        <Text style={[styles.scheduleTime, { color: item.color || '#A78BFA' }]}>{item.time}</Text>
+                        <Text style={styles.scheduleDuration}>{item.duration || 60} dk</Text>
+                      </View>
 
-                    {/* Dikey çizgi */}
-                    <View style={styles.scheduleLineCol}>
-                      <View style={[styles.scheduleDot, { backgroundColor: item.color }]} />
-                      {index < DUMMY_SCHEDULE.length - 1 && (
-                        <View style={[styles.scheduleLine, { backgroundColor: item.color + '44' }]} />
-                      )}
-                    </View>
+                      {/* Dikey çizgi */}
+                      <View style={styles.scheduleLineCol}>
+                        <View style={[styles.scheduleDot, { backgroundColor: item.color || '#A78BFA' }]} />
+                        {index < schedule.length - 1 && (
+                          <View style={[styles.scheduleLine, { backgroundColor: (item.color || '#A78BFA') + '44' }]} />
+                        )}
+                      </View>
 
-                    {/* Sağ içerik */}
-                    <View style={[styles.scheduleContent, { borderLeftColor: item.color + '44' }]}>
-                      <View style={styles.scheduleContentInner}>
-                        <Text style={styles.scheduleEmoji}>{item.customerEmoji}</Text>
-                        <View style={styles.scheduleInfo}>
-                          <Text style={styles.scheduleName}>{item.customerName}</Text>
-                          <Text style={styles.scheduleService}>{item.service}</Text>
+                      {/* Sağ içerik */}
+                      <View style={[styles.scheduleContent, { borderLeftColor: (item.color || '#A78BFA') + '44' }]}>
+                        <View style={styles.scheduleContentInner}>
+                          <Text style={styles.scheduleEmoji}>{item.customerEmoji || '👩'}</Text>
+                          <View style={styles.scheduleInfo}>
+                            <Text style={styles.scheduleName}>{item.customerName}</Text>
+                            <Text style={styles.scheduleService}>{item.service}</Text>
+                          </View>
+                          <View style={[styles.scheduleStatusDot, { backgroundColor: item.color || '#A78BFA' }]} />
                         </View>
-                        <View style={[styles.scheduleStatusDot, { backgroundColor: item.color }]} />
                       </View>
                     </View>
                   </View>
-                </View>
-              ))}
+                ))
+              )}
             </View>
           </View>
 
@@ -333,42 +415,46 @@ export default function HairdresserDashboard() {
               onAction={() => router.push('/(hairdresser)/chats' as any)}
             />
             <View style={styles.messagesCard}>
-              {DUMMY_MESSAGES.map((msg, index) => (
-                <View key={msg.id}>
-                  <TouchableOpacity
-                    style={styles.messageRow}
-                    onPress={() => router.push(`/(hairdresser)/chats` as any)}
-                  >
-                    <View style={styles.messageAvatarWrapper}>
-                      <LinearGradient
-                        colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
-                        style={styles.messageAvatar}
-                      >
-                        <Text style={styles.messageEmoji}>{msg.customerEmoji}</Text>
-                      </LinearGradient>
-                      {msg.unread && <View style={styles.messageUnreadDot} />}
-                    </View>
-                    <View style={styles.messageContent}>
-                      <View style={styles.messageTopRow}>
-                        <Text style={[styles.messageName, msg.unread && styles.messageNameBold]}>
-                          {msg.customerName}
-                        </Text>
-                        <Text style={styles.messageTime}>{msg.time}</Text>
-                      </View>
-                      <Text style={[styles.messageText, msg.unread && styles.messageTextBold]} numberOfLines={1}>
-                        {msg.message}
-                      </Text>
-                    </View>
+              {messages.length === 0 ? (
+                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small, textAlign: 'center', padding: SPACING.md }}>Mesaj bulunmuyor.</Text>
+              ) : (
+                messages.map((msg, index) => (
+                  <View key={msg.id}>
                     <TouchableOpacity
-                      style={styles.replyBtn}
+                      style={styles.messageRow}
                       onPress={() => router.push(`/(hairdresser)/chats` as any)}
                     >
-                      <Ionicons name="arrow-redo-outline" size={16} color={COLORS.primary} />
+                      <View style={styles.messageAvatarWrapper}>
+                        <LinearGradient
+                          colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
+                          style={styles.messageAvatar}
+                        >
+                          <Text style={styles.messageEmoji}>{msg.customerEmoji || '👱‍♀️'}</Text>
+                        </LinearGradient>
+                        {msg.unread && <View style={styles.messageUnreadDot} />}
+                      </View>
+                      <View style={styles.messageContent}>
+                        <View style={styles.messageTopRow}>
+                          <Text style={[styles.messageName, msg.unread && styles.messageNameBold]}>
+                            {msg.customerName}
+                          </Text>
+                          <Text style={styles.messageTime}>{msg.time || 'Şimdi'}</Text>
+                        </View>
+                        <Text style={[styles.messageText, msg.unread && styles.messageTextBold]} numberOfLines={1}>
+                          {msg.message || msg.lastMessage}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={styles.replyBtn}
+                        onPress={() => router.push(`/(hairdresser)/chats` as any)}
+                      >
+                        <Ionicons name="arrow-redo-outline" size={16} color={COLORS.primary} />
+                      </TouchableOpacity>
                     </TouchableOpacity>
-                  </TouchableOpacity>
-                  {index < DUMMY_MESSAGES.length - 1 && <View style={styles.messageDivider} />}
-                </View>
-              ))}
+                    {index < messages.length - 1 && <View style={styles.messageDivider} />}
+                  </View>
+                ))
+              )}
             </View>
           </View>
 
@@ -376,7 +462,7 @@ export default function HairdresserDashboard() {
           <View style={styles.section}>
             <SectionTitle title="Kampanya" icon="megaphone-outline" />
             <TouchableOpacity style={styles.campaignCard} activeOpacity={0.85} 
-            onPress={() => router.push('/(hairdresser)/campaign' as any)}>
+              onPress={() => router.push('/(hairdresser)/campaign' as any)}>
               <LinearGradient
                 colors={['#7C3AED', '#A78BFA', '#C4B5FD']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
@@ -414,14 +500,14 @@ export default function HairdresserDashboard() {
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Net Kazanç</Text>
                     <Text style={[styles.cariMainValue, { color: '#34D399' }]}>
-                      ₺{DUMMY_CARI.netProfit.toLocaleString()}
+                      ₺{cari.netProfit.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.cariDivider} />
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Bu Ay</Text>
                     <Text style={[styles.cariMainValue, { color: COLORS.primary }]}>
-                      ₺{DUMMY_CARI.thisMonth.toLocaleString()}
+                      ₺{cari.thisMonth.toLocaleString()}
                     </Text>
                     <View style={styles.cariGrowth}>
                       <Ionicons name="trending-up" size={12} color="#34D399" />
@@ -432,7 +518,7 @@ export default function HairdresserDashboard() {
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Toplam İş</Text>
                     <Text style={[styles.cariMainValue, { color: '#FFB844' }]}>
-                      {DUMMY_CARI.totalJobs}
+                      {cari.totalJobs}
                     </Text>
                   </View>
                 </View>
@@ -444,7 +530,7 @@ export default function HairdresserDashboard() {
                       <View style={[styles.cariDot, { backgroundColor: '#34D399' }]} />
                       <Text style={styles.cariBottomLabel}>Toplam Gelir</Text>
                     </View>
-                    <Text style={styles.cariBottomValue}>₺{DUMMY_CARI.totalEarning.toLocaleString()}</Text>
+                    <Text style={styles.cariBottomValue}>₺{cari.totalEarning.toLocaleString()}</Text>
                   </View>
                   <View style={styles.cariBottomItem}>
                     <View style={styles.cariBottomLeft}>
@@ -452,7 +538,7 @@ export default function HairdresserDashboard() {
                       <Text style={styles.cariBottomLabel}>Toplam Gider</Text>
                     </View>
                     <Text style={[styles.cariBottomValue, { color: '#F87171' }]}>
-                      ₺{DUMMY_CARI.totalExpense.toLocaleString()}
+                      ₺{cari.totalExpense.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.cariBottomItem}>
@@ -460,13 +546,12 @@ export default function HairdresserDashboard() {
                       <View style={[styles.cariDot, { backgroundColor: '#A78BFA' }]} />
                       <Text style={styles.cariBottomLabel}>Geçen Ay</Text>
                     </View>
-                    <Text style={styles.cariBottomValue}>₺{DUMMY_CARI.lastMonth.toLocaleString()}</Text>
+                    <Text style={styles.cariBottomValue}>₺{cari.lastMonth.toLocaleString()}</Text>
                   </View>
                 </View>
 
                 {/* Detay butonu */}
-                <TouchableOpacity style={styles.cariDetailBtn}
-                >
+                <TouchableOpacity style={styles.cariDetailBtn}>
                   <Text style={styles.cariDetailBtnText}>Tüm Cari Dökümü Gör</Text>
                   <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
                 </TouchableOpacity>

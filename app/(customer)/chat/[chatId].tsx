@@ -252,7 +252,6 @@ export default function ChatScreen() {
     setIsLoading(true);
     if (!chatId) return;
 
-
     getChat(chatId as string).then(chat => {
       setChatInfo(chat);
       setIsLoading(false);

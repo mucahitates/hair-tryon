@@ -1,0 +1,15 @@
+customer
++ Randevu,
++ Profil
++ işlerim(Modal da klavye üstte kalıyor)
++ Sohbet
++ Randevu
++ Anasayfa
+
+hairdresser
++ Menü(index)
+-
+-
+-
+-
+-

@@ -39,8 +39,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import { changeHairStyle } from '../../src/services/falService';
+import { saveAiTryOn, saveToFavorites } from '../../src/services/customer/aiService';
 
 const { width, height } = Dimensions.get('window');
+
 
 // ─── SAÇ MODELLERİ ─────────────────────────────────────────
 // Firestore veya statik liste olarak tutulabilir
@@ -293,20 +295,29 @@ export default function AIHairScreen() {
   const handleProcessing = async () => {
     setIsProcessing(true);
     try {
-      const result = await changeHairStyle(
-        {
-          photoUri: photo!,
-          modelPrompt: selectedStyle?.style || '',
-          colorPrompt: selectedColor?.apiColor || '',
-          colorName: selectedColor?.name || '',
-          modelName: selectedStyle?.name || '',
-        },
-        (status) => console.log('FAL Progress:', status)
-      );
+      const result = await changeHairStyle({
+        photoUri: photo!,
+        modelPrompt: selectedStyle?.style || '',
+        colorPrompt: selectedColor?.apiColor || '',
+        colorName: selectedColor?.name || '',
+        modelName: selectedStyle?.name || '',
+      });
 
       setResultImage(result.generatedImageUrl);
       setIsProcessing(false);
       animateStep(6);
+
+      // Firestore'a kaydet (Bu kısım index.tsx'te görünmesini sağlayacak)
+      // Firestore'a kaydet
+      if (user?.uid) {
+        await saveAiTryOn(user.uid, {
+          style: selectedStyle?.name,
+          color: selectedColor?.name,
+          emoji: selectedStyle?.emoji,
+          resultImage: result.generatedImageUrl,
+          originalImage: photo // EKLENEN SATIR: Eski fotoğrafı da kaydediyoruz
+        });
+      }
 
     } catch (error: any) {
       setIsProcessing(false);
@@ -318,10 +329,18 @@ export default function AIHairScreen() {
   // ── FAVORİYE EKLE ────────────────────────────────────────
   // Firestore: hairTryOns koleksiyonuna kaydeder
   // Şimdilik sadece local state değişiyor
-  const handleFavorite = () => {
-    setIsFavorited(!isFavorited);
-    // TODO: Firestore'a kaydet
-    // await addDoc(collection(db, 'hairTryOns'), { userId, photo, resultImage, style, color, createdAt })
+  const handleFavorite = async () => {
+    if (!user?.uid || !resultImage) return;
+
+    setIsFavorited(true);
+    await saveToFavorites(user.uid, {
+      style: selectedStyle?.name,
+      color: selectedColor?.name,
+      emoji: selectedStyle?.emoji,
+      resultImage: resultImage,
+      originalImage: photo // EKLENEN SATIR
+    });
+    Alert.alert('Başarılı', 'Favorilere eklendi!');
   };
 
   // ── İŞ İLANINA DÖNÜŞTÜR ──────────────────────────────────
@@ -334,7 +353,9 @@ export default function AIHairScreen() {
 
   // ── GERİ GİT ─────────────────────────────────────────────
   const handleBack = () => {
-    if (step > 1) {
+    if (step === 6) {
+      handleReset(); // Sonuç ekranındaysa her şeyi sıfırlayıp 1. adıma (görsel yükleme) gönderir
+    } else if (step > 1) {
       animateStep(step - 1);
     }
   };
