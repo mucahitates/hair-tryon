@@ -1,191 +1,41 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR İŞ HAVUZU (app/(hairdresser)/jobs.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/jobs.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  Modal,
-  TextInput,
-  Image,
-  Alert,
-  ScrollView,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Animated, Dimensions, Modal, TextInput, Image, Alert,
+  ScrollView, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import {
+  collection, query, where, onSnapshot, orderBy,
+  addDoc, serverTimestamp, doc, getDocs, setDoc,
+} from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_JOBS = [
-  {
-    id: 'j1',
-    customerId: 'c1',
-    customerName: 'Ayşe Kaya',
-    customerEmoji: '👩',
-    customerCity: 'İstanbul / Kadıköy',
-    customerRating: 4.9,
-    customerJobCount: 8,
-    memberSince: '2023',
-    service: 'Balayage',
-    colorPreference: 'Karamel & Bal Sarısı',
-    budget: 800,
-    note: 'Doğal görünümlü, yüzüme uygun bir balayage istiyorum. Saçlarım daha önce boyandı.',
-    publishedAt: '3 dk önce',
-    isNew: true,
-    isUrgent: false,
-    currentPhotoUrl: null,
-    aiResultUrl: null,
-    tags: ['Balayage', 'Renk', 'Uzun Saç'],
-  },
-  {
-    id: 'j2',
-    customerId: 'c2',
-    customerName: 'Fatma Şahin',
-    customerEmoji: '👩‍🦱',
-    customerCity: 'İstanbul / Beşiktaş',
-    customerRating: 5.0,
-    customerJobCount: 12,
-    memberSince: '2022',
-    service: 'Keratin Bakım',
-    colorPreference: null,
-    budget: 600,
-    note: 'Saçlarım çok kuru ve kırılgan. Keratin sonrası düzgün ve parlak bir görünüm istiyorum.',
-    publishedAt: '18 dk önce',
-    isNew: true,
-    isUrgent: true,
-    currentPhotoUrl: null,
-    aiResultUrl: null,
-    tags: ['Keratin', 'Bakım', 'Orta Boy'],
-  },
-  {
-    id: 'j3',
-    customerId: 'c3',
-    customerName: 'Zeynep Mart',
-    customerEmoji: '👩‍🦰',
-    customerCity: 'İstanbul / Şişli',
-    customerRating: 4.7,
-    customerJobCount: 3,
-    memberSince: '2024',
-    service: 'Wolf Cut',
-    colorPreference: 'Doğal Renk',
-    budget: 400,
-    note: 'Wolf cut yaptırmak istiyorum, layered ve textured bir kesim. Referans fotoğraf gönderdim.',
-    publishedAt: '1 saat önce',
-    isNew: false,
-    isUrgent: false,
-    currentPhotoUrl: null,
-    aiResultUrl: null,
-    tags: ['Kesim', 'Wolf Cut', 'Kısa'],
-  },
-  {
-    id: 'j4',
-    customerId: 'c4',
-    customerName: 'Merve Yıldız',
-    customerEmoji: '👱‍♀️',
-    customerCity: 'İstanbul / Üsküdar',
-    customerRating: 4.5,
-    customerJobCount: 5,
-    memberSince: '2023',
-    service: 'Ombre',
-    colorPreference: 'Kahve → Sarı',
-    budget: 700,
-    note: 'Koyu kahveden sarıya geçiş istiyorum. Daha önce hiç ombre yaptırmadım.',
-    publishedAt: '2 saat önce',
-    isNew: false,
-    isUrgent: false,
-    currentPhotoUrl: null,
-    aiResultUrl: null,
-    tags: ['Ombre', 'Renk', 'Uzun Saç'],
-  },
-];
-
-const DUMMY_MY_BIDS = [
-  {
-    id: 'b1',
-    jobId: 'j1',
-    customerName: 'Selin Arslan',
-    customerEmoji: '👩‍🦳',
-    service: 'Saç Boyama',
-    myPrice: 450,
-    customerBudget: 500,
-    status: 'pending',
-    sentAt: '10 dk önce',
-    chatId: 'chat1',
-  },
-  {
-    id: 'b2',
-    jobId: 'j2',
-    customerName: 'Elif Demir',
-    customerEmoji: '👩‍🦱',
-    service: 'Balayage',
-    myPrice: 750,
-    customerBudget: 800,
-    status: 'accepted',
-    sentAt: '2 saat önce',
-    chatId: 'chat2',
-  },
-  {
-    id: 'b3',
-    jobId: 'j3',
-    customerName: 'Hande Koç',
-    customerEmoji: '👩',
-    service: 'Keratin',
-    myPrice: 600,
-    customerBudget: 550,
-    status: 'rejected',
-    sentAt: 'Dün',
-    chatId: 'chat3',
-  },
-];
-
-// ─── FOTOĞRAF BÜYÜTME MODALI ───────────────────────────────
-function PhotoModal({ visible, onClose, emoji, label }: {
-  visible: boolean;
-  onClose: () => void;
-  emoji: string;
-  label: string;
-}) {
-  return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <TouchableOpacity style={photoModalStyles.overlay} onPress={onClose} activeOpacity={1}>
-        <View style={photoModalStyles.container}>
-          <Text style={photoModalStyles.label}>{label}</Text>
-          <View style={photoModalStyles.photoBox}>
-            <Text style={photoModalStyles.emoji}>{emoji}</Text>
-          </View>
-          <TouchableOpacity style={photoModalStyles.closeBtn} onPress={onClose}>
-            <Ionicons name="close" size={22} color={COLORS.white} />
-          </TouchableOpacity>
-        </View>
-      </TouchableOpacity>
-    </Modal>
-  );
-}
-
-const photoModalStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center' },
-  container: { width: width * 0.85, alignItems: 'center', gap: SPACING.md },
-  label: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.white },
-  photoBox: { width: width * 0.85, height: width * 0.85, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
-  emoji: { fontSize: 100 },
-  closeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
-});
+const formatTime = (timestamp: any) => {
+  if (!timestamp) return 'Şimdi';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  const now = new Date();
+  const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffMins < 1) return 'Şimdi';
+  if (diffMins < 60) return `${diffMins} dk önce`;
+  if (diffHrs < 24) return `${diffHrs} saat önce`;
+  return date.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
+};
 
 // ─── TEKLİF VER MODALI ─────────────────────────────────────
-function BidModal({ visible, onClose, job }: {
+function BidModal({ visible, onClose, job, hairdresserId }: {
   visible: boolean;
   onClose: () => void;
-  job: typeof DUMMY_JOBS[0] | null;
+  job: any | null;
+  hairdresserId: string;
 }) {
   const [price, setPrice] = useState('');
   const [note, setNote] = useState('');
@@ -203,16 +53,74 @@ function BidModal({ visible, onClose, job }: {
 
   if (!job) return null;
 
-  const handleSend = () => {
-    if (!price) { Alert.alert('Hata', 'Fiyat giriniz'); return; }
-    Alert.alert('Teklif Gönderildi', `₺${price} teklifiniz gönderildi!`);
-    onClose();
+  const handleSend = async () => {
+    if (!price) {
+      Alert.alert('Hata', 'Fiyat giriniz');
+      return;
+    }
+    try {
+      const chatId = `chat_${job.id}_${hairdresserId}`;
+      const autoMessage = `Merhaba, iş ilanınızı inceledim ve ₺${price} teklif ediyorum. ${note ? note : ''}`.trim();
+
+      // 1) Teklif kaydı
+      await addDoc(collection(db, 'bids'), {
+        jobId: job.id,
+        hairdresserId,
+        customerId: job.customerId || '',
+        customerName: job.customerName || 'Kullanıcı',
+        customerEmoji: job.customerEmoji || '👩',
+        service: job.service,
+        myPrice: parseInt(price),
+        customerBudget: job.budget,
+        status: 'pending',
+        note,
+        sentAt: serverTimestamp(),
+        createdAt: serverTimestamp(),
+        chatId,
+      });
+
+      // 2) Otomatik mesaj
+      await addDoc(collection(db, 'chats', chatId, 'messages'), {
+        text: autoMessage,
+        senderId: hairdresserId,
+        senderRole: 'hairdresser',
+        messageType: 'text',
+        isRead: false,
+        createdAt: serverTimestamp(),
+      });
+
+      // 3) Chat dokümanı (merge: true — varsa üzerine yazar)
+      await setDoc(doc(db, 'chats', chatId), {
+        jobId: job.id,
+        hairdresserId,
+        customerId: job.customerId || '',
+        customerName: job.customerName || 'Müşteri',
+        customerEmoji: job.customerEmoji || '👩',
+        jobService: job.service,
+        bidPrice: parseInt(price),
+        customerBudget: job.budget,
+        jobStatus: 'bidding',
+        lastMessage: autoMessage,
+        lastMessageTime: serverTimestamp(),
+        unreadByCustomer: true,
+        unreadByHairdresser: false,
+      }, { merge: true });
+
+      Alert.alert('Teklif Gönderildi ✅', `₺${price} teklifiniz başarıyla gönderildi!`);
+      onClose();
+    } catch (e) {
+      console.error(e);
+      Alert.alert('Hata', 'Teklif iletilemedi, lütfen tekrar deneyin.');
+    }
   };
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
       <View style={bidModalStyles.overlay}>
-        <Animated.View style={[bidModalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
+        <KeyboardAvoidingView
+          style={bidModalStyles.container}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
           <View style={bidModalStyles.header}>
             <Text style={bidModalStyles.title}>Teklif Ver</Text>
             <TouchableOpacity onPress={onClose} style={bidModalStyles.closeBtn}>
@@ -220,14 +128,13 @@ function BidModal({ visible, onClose, job }: {
             </TouchableOpacity>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* İş özeti */}
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={bidModalStyles.jobSummary}>
               <LinearGradient
                 colors={[COLORS.primary + '22', COLORS.primaryDark + '11']}
                 style={bidModalStyles.jobSummaryGradient}
               >
-                <Text style={bidModalStyles.jobSummaryEmoji}>{job.customerEmoji}</Text>
+                <Text style={bidModalStyles.jobSummaryEmoji}>{job.customerEmoji || '👩'}</Text>
                 <View style={bidModalStyles.jobSummaryInfo}>
                   <Text style={bidModalStyles.jobSummaryName}>{job.customerName}</Text>
                   <Text style={bidModalStyles.jobSummaryService}>{job.service}</Text>
@@ -239,7 +146,6 @@ function BidModal({ visible, onClose, job }: {
               </LinearGradient>
             </View>
 
-            {/* Fiyat giriş */}
             <View style={bidModalStyles.section}>
               <Text style={bidModalStyles.label}>Teklif Fiyatınız (₺) *</Text>
               <View style={bidModalStyles.priceInputWrapper}>
@@ -254,13 +160,13 @@ function BidModal({ visible, onClose, job }: {
                   autoFocus
                 />
               </View>
-              {price && parseInt(price) > job.budget && (
+              {!!price && parseInt(price) > job.budget && (
                 <View style={bidModalStyles.warningRow}>
                   <Ionicons name="alert-circle-outline" size={14} color={COLORS.warning} />
                   <Text style={bidModalStyles.warningText}>Müşteri bütçesini aşıyor</Text>
                 </View>
               )}
-              {price && parseInt(price) <= job.budget && (
+              {!!price && parseInt(price) <= job.budget && (
                 <View style={bidModalStyles.successRow}>
                   <Ionicons name="checkmark-circle-outline" size={14} color={COLORS.success} />
                   <Text style={bidModalStyles.successText}>Bütçeye uygun</Text>
@@ -268,9 +174,8 @@ function BidModal({ visible, onClose, job }: {
               )}
             </View>
 
-            {/* Not */}
             <View style={bidModalStyles.section}>
-              <Text style={bidModalStyles.label}>Müşteriye Not (opsiyonel)</Text>
+              <Text style={bidModalStyles.label}>Ek not (opsiyonel)</Text>
               <View style={bidModalStyles.noteWrapper}>
                 <TextInput
                   style={bidModalStyles.noteInput}
@@ -284,6 +189,16 @@ function BidModal({ visible, onClose, job }: {
               </View>
               <Text style={bidModalStyles.charCount}>{note.length}/200</Text>
             </View>
+
+            {/* Mesaj önizleme */}
+            {!!price && (
+              <View style={bidModalStyles.previewCard}>
+                <Text style={bidModalStyles.previewLabel}>Gönderilecek mesaj:</Text>
+                <Text style={bidModalStyles.previewText}>
+                  {`Merhaba, iş ilanınızı inceledim ve ₺${price} teklif ediyorum.${note ? ' ' + note : ''}`}
+                </Text>
+              </View>
+            )}
 
             <View style={{ height: SPACING.xl }} />
           </ScrollView>
@@ -300,15 +215,459 @@ function BidModal({ visible, onClose, job }: {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </KeyboardAvoidingView>
       </View>
     </Modal>
   );
 }
 
+// ─── İŞ KARTI ──────────────────────────────────────────────
+function JobCard({ job, allBids, onBid, onOpenPhoto }: {
+  job: any;
+  allBids: any[];
+  onBid: () => void;
+  onOpenPhoto: (uri: string | null, emoji: string, label: string) => void;
+}) {
+  const { user } = useAuthStore();
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  const jobBids = allBids.filter(b => b.jobId === job.id);
+  const myBid = jobBids.find(b => b.hairdresserId === user?.uid);
+  const hasBid = !!myBid;
+
+  return (
+    <TouchableOpacity
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
+      activeOpacity={1}
+    >
+      <Animated.View style={[styles.jobCard, { transform: [{ scale: scaleAnim }] }]}>
+        <LinearGradient
+          colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
+          style={styles.jobCardGradient}
+        >
+          {/* Müşteri bilgisi */}
+          <View style={styles.jobCardHeader}>
+            <View style={styles.customerInfo}>
+              <LinearGradient
+                colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
+                style={styles.customerAvatar}
+              >
+                {job.currentPhotoUrl ? (
+                  <Image source={{ uri: job.currentPhotoUrl }} style={styles.avatarImage} />
+                ) : (
+                  <Text style={styles.customerEmoji}>{job.customerEmoji || '👩'}</Text>
+                )}
+              </LinearGradient>
+              <View style={styles.customerDetails}>
+                <Text style={styles.customerName}>{job.customerName || 'Müşteri'}</Text>
+                <View style={styles.customerMeta}>
+                  <Ionicons name="location-outline" size={11} color={COLORS.textMuted} />
+                  <Text style={styles.customerMetaText}>{job.customerCity || 'Belirtilmemiş'}</Text>
+                </View>
+                <View style={styles.customerStats}>
+                  <Ionicons name="star" size={11} color="#FFB844" />
+                  <Text style={styles.customerRating}>{(job.customerRating ?? 5.0).toFixed(1)}</Text>
+                  <Text style={styles.dot}>·</Text>
+                  <Text style={styles.customerJobCount}>{job.customerJobCount ?? 1} iş</Text>
+                </View>
+              </View>
+            </View>
+            <View style={styles.jobBadges}>
+              {jobBids.length > 0 && (
+                <View style={[styles.badge, { backgroundColor: '#FFB844', marginBottom: 4 }]}>
+                  <Text style={styles.badgeText}>{jobBids.length} TEKLİF</Text>
+                </View>
+              )}
+              {hasBid && (
+                <View style={[styles.badge, { backgroundColor: COLORS.success }]}>
+                  <Text style={styles.badgeText}>TEKLİF VERİLDİ</Text>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Hizmet */}
+          <View style={styles.serviceRow}>
+            <View style={styles.serviceBadge}>
+              <Ionicons name="cut-outline" size={13} color={COLORS.primary} />
+              <Text style={styles.serviceText}>{job.service}</Text>
+            </View>
+            {job.colorPreference && (
+              <View style={styles.colorBadge}>
+                <View style={styles.colorDot} />
+                <Text style={styles.colorText}>{job.colorPreference}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Fotoğraflar */}
+          <View style={styles.photosRow}>
+            <TouchableOpacity
+              style={styles.photoCard}
+              onPress={() => onOpenPhoto(job.currentPhotoUrl, job.customerEmoji || '👩', 'Şu Anki Görünüm')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.photoGradient}>
+                {job.currentPhotoUrl
+                  ? <Image source={{ uri: job.currentPhotoUrl }} style={styles.photoImage} />
+                  : <Text style={styles.photoEmoji}>{job.customerEmoji || '👩'}</Text>
+                }
+                <View style={styles.photoLabel}><Text style={styles.photoLabelText}>Şu An</Text></View>
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <View style={styles.photoArrow}>
+              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.arrowBg}>
+                <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
+              </LinearGradient>
+              <Text style={styles.aiLabel}>AI</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.photoCard}
+              onPress={() => onOpenPhoto(job.aiResultUrl, '✨', 'İstenen Görünüm')}
+              activeOpacity={0.85}
+            >
+              <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.photoGradient}>
+                {job.aiResultUrl
+                  ? <Image source={{ uri: job.aiResultUrl }} style={styles.photoImage} />
+                  : <Text style={styles.photoEmoji}>✨</Text>
+                }
+                <View style={[styles.photoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
+                  <Text style={styles.photoLabelText}>İstenen</Text>
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+
+          {/* Not */}
+          {job.note && (
+            <View style={styles.noteCard}>
+              <Ionicons name="chatbubble-ellipses-outline" size={13} color={COLORS.textMuted} />
+              <Text style={styles.noteText} numberOfLines={2}>{job.note}</Text>
+            </View>
+          )}
+
+          {/* Alt: Bütçe + Teklif */}
+          <View style={styles.cardFooter}>
+            <View style={styles.budgetBadge}>
+              <Ionicons name="wallet-outline" size={14} color={COLORS.success} />
+              <Text style={styles.budgetText}>₺{job.budget}</Text>
+            </View>
+            <View style={styles.timeBadge}>
+              <Ionicons name="time-outline" size={12} color={COLORS.textMuted} />
+              <Text style={styles.timeText}>{formatTime(job.createdAt)}</Text>
+            </View>
+            <TouchableOpacity style={styles.bidBtn} onPress={onBid}>
+              <LinearGradient
+                colors={hasBid ? ['#FFB844', '#F59E0B'] : [COLORS.primary, COLORS.primaryDark]}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={styles.bidBtnGradient}
+              >
+                <Ionicons name={hasBid ? 'refresh-outline' : 'send-outline'} size={14} color={COLORS.white} />
+                <Text style={styles.bidBtnText}>{hasBid ? 'Güncelle' : 'Teklif Ver'}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
+
+// ─── ANA EKRAN ──────────────────────────────────────────────
+export default function HairdresserJobsScreen() {
+  const router = useRouter();
+  const { user } = useAuthStore();
+
+  const [activeTab, setActiveTab] = useState<'jobs' | 'mybids'>('jobs');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'nearby' | 'matched'>('all');
+  const [jobs, setJobs] = useState<any[]>([]);
+  const [myBids, setMyBids] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedJob, setSelectedJob] = useState<any | null>(null);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [fullscreenPhoto, setFullscreenPhoto] = useState<{ uri: string | null; emoji: string; label: string } | null>(null);
+
+  const headerAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }).start();
+  }, []);
+
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsubs: (() => void)[] = [];
+
+    unsubs.push(onSnapshot(
+      query(collection(db, 'jobs'), orderBy('createdAt', 'desc')),
+      (snap) => setJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+    ));
+
+    unsubs.push(onSnapshot(
+      query(collection(db, 'bids'), where('hairdresserId', '==', user.uid), orderBy('createdAt', 'desc')),
+      (snap) => {
+        setMyBids(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setLoading(false);
+      }
+    ));
+
+    return () => unsubs.forEach(u => u());
+  }, [user?.uid]);
+
+  const handleGoToChat = async (bid: any) => {
+    try {
+      if (bid.chatId) {
+        router.push(`/(hairdresser)/chat/${bid.chatId}` as any);
+        return;
+      }
+      const snap = await getDocs(query(
+        collection(db, 'chats'),
+        where('jobId', '==', bid.jobId || ''),
+        where('hairdresserId', '==', user?.uid)
+      ));
+      if (!snap.empty) {
+        router.push(`/(hairdresser)/chat/${snap.docs[0].id}` as any);
+        return;
+      }
+      Alert.alert('Sohbet bulunamadı', 'Henüz sohbet oluşturulmamış.');
+    } catch (e) {
+      Alert.alert('Hata', 'Sohbet açılamadı.');
+    }
+  };
+
+  const filteredJobs = jobs.filter(j => {
+    if (activeFilter === 'new') return j.isNew === true;
+    if (activeFilter === 'nearby') return j.customerCity?.includes('İstanbul');
+    if (activeFilter === 'matched') return ['Balayage', 'Keratin Bakım', 'Wolf Cut', 'Kesim'].includes(j.service);
+    return true;
+  });
+
+  const bidStatusConfig: Record<string, { label: string; color: string; icon: string }> = {
+    pending: { label: 'Bekliyor', color: '#FFB844', icon: 'time-outline' },
+    accepted: { label: 'Kabul Edildi', color: '#34D399', icon: 'checkmark-circle-outline' },
+    rejected: { label: 'Reddedildi', color: '#F87171', icon: 'close-circle-outline' },
+    withdrawn: { label: 'Geri Çekildi', color: '#F87171', icon: 'close-circle-outline' },
+  };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.container}>
+      <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
+      <View style={styles.orb} />
+
+      {/* Header */}
+      <Animated.View style={[styles.header, { opacity: headerAnim }]}>
+        <View>
+          <Text style={styles.title}>İş Havuzu</Text>
+          <Text style={styles.subtitle}>
+            {activeTab === 'jobs' ? `${filteredJobs.length} ilan` : `${myBids.length} teklif`}
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.notifBtn} onPress={() => Alert.alert('Bildirimler', 'Henüz yeni bildirim yok.')}>
+          <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
+          <View style={styles.notifDot} />
+        </TouchableOpacity>
+      </Animated.View>
+
+      {/* Sekmeler */}
+      <View style={styles.tabRow}>
+        {[
+          { key: 'jobs', label: 'İş İlanları', count: jobs.length },
+          { key: 'mybids', label: 'Tekliflerim', count: myBids.length },
+        ].map((tab) => (
+          <TouchableOpacity
+            key={tab.key}
+            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
+            onPress={() => setActiveTab(tab.key as any)}
+          >
+            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>{tab.label}</Text>
+            <View style={[styles.tabCount, activeTab === tab.key && styles.tabCountActive]}>
+              <Text style={[styles.tabCountText, activeTab === tab.key && styles.tabCountTextActive]}>{tab.count}</Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {activeTab === 'jobs' ? (
+        <>
+          {/* Filtreler */}
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContent}>
+            {[
+              { key: 'all', label: 'Tümü', icon: 'grid-outline' },
+              { key: 'new', label: 'Yeni', icon: 'sparkles-outline' },
+              { key: 'nearby', label: 'Yakınımda', icon: 'location-outline' },
+              { key: 'matched', label: 'Uygun', icon: 'checkmark-circle-outline' },
+            ].map((f) => (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
+                onPress={() => setActiveFilter(f.key as any)}
+              >
+                <Ionicons name={f.icon as any} size={13} color={activeFilter === f.key ? COLORS.primary : COLORS.textMuted} />
+                <Text style={[styles.filterText, activeFilter === f.key && styles.filterTextActive]}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <FlatList
+            data={myBids.filter(b => b.status !== 'withdrawn')}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.listContent}
+            showsVerticalScrollIndicator={false}
+            ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+            renderItem={({ item }) => (
+              <JobCard
+                job={item}
+                allBids={myBids}
+                onBid={() => { setSelectedJob(item); setShowBidModal(true); }}
+                onOpenPhoto={(uri, emoji, label) => setFullscreenPhoto({ uri, emoji, label })}
+              />
+            )}
+            ListEmptyComponent={
+              <View style={styles.empty}>
+                <Ionicons name="briefcase-outline" size={48} color={COLORS.textMuted} />
+                <Text style={styles.emptyTitle}>İlan bulunamadı</Text>
+                <Text style={styles.emptyDesc}>Filtre değiştirmeyi deneyin</Text>
+              </View>
+            }
+          />
+        </>
+      ) : (
+        <FlatList
+          data={myBids}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
+          renderItem={({ item }) => {
+            const conf = bidStatusConfig[item.status] || bidStatusConfig.pending;
+            return (
+              <TouchableOpacity style={styles.bidCard} onPress={() => handleGoToChat(item)}>
+                <LinearGradient colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']} style={styles.bidCardGradient}>
+                  <View style={styles.bidCardHeader}>
+                    <View style={styles.bidCustomerInfo}>
+                      <Text style={styles.bidEmoji}>{item.customerEmoji || '👩'}</Text>
+                      <View>
+                        <Text style={styles.bidCustomerName}>{item.customerName}</Text>
+                        <Text style={styles.bidService}>{item.service}</Text>
+                      </View>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: conf.color + '22', borderColor: conf.color + '44' }]}>
+                      <Ionicons name={conf.icon as any} size={12} color={conf.color} />
+                      <Text style={[styles.statusText, { color: conf.color }]}>{conf.label}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.bidPriceRow}>
+                    <Text style={styles.bidPriceLabel}>Teklifim</Text>
+                    <Text style={styles.bidPrice}>₺{item.myPrice}</Text>
+                    <Text style={styles.dot}>/</Text>
+                    <Text style={styles.bidBudget}>Bütçe ₺{item.customerBudget}</Text>
+                    <View style={{ flex: 1 }} />
+                    <Ionicons name="time-outline" size={11} color={COLORS.textMuted} />
+                    <Text style={styles.bidTime}>{formatTime(item.sentAt)}</Text>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                    <TouchableOpacity
+                      style={[styles.goToChatBtn, { flex: 1 }]}
+                      onPress={() => handleGoToChat(item)}
+                    >
+                      <Text style={styles.goToChatText}>Sohbete Git</Text>
+                      <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+                    </TouchableOpacity>
+
+                    {item.status === 'pending' && (
+                      <TouchableOpacity
+                        style={styles.withdrawBtn}
+                        onPress={() => Alert.alert(
+                          'Teklifi Geri Çek',
+                          'Teklifinizi geri çekmek istediğinize emin misiniz?',
+                          [
+                            { text: 'Vazgeç', style: 'cancel' },
+                            {
+                              text: 'Geri Çek', style: 'destructive',
+                              onPress: async () => {
+                                try {
+                                  const { updateDoc, doc: firestoreDoc } = await import('firebase/firestore');
+                                  await updateDoc(firestoreDoc(db, 'bids', item.id), { status: 'withdrawn' });
+                                  const cancelMsg = `${item.service} işiniz için ₺${item.myPrice}'lik teklifimi iptal ediyorum.`;
+                                  await addDoc(collection(db, 'chats', item.chatId, 'messages'), {
+                                    text: cancelMsg,
+                                    senderId: user?.uid,
+                                    senderRole: 'hairdresser',
+                                    messageType: 'text',
+                                    isRead: false,
+                                    createdAt: serverTimestamp(),
+                                  });
+                                } catch (e) {
+                                  Alert.alert('Hata', 'İptal işlemi gerçekleştirilemedi.');
+                                }
+                              }
+                            },
+                          ]
+                        )}
+                      >
+                        <Ionicons name="close-circle-outline" size={14} color="#F87171" />
+                        <Text style={styles.withdrawBtnText}>Geri Çek</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            );
+          }}
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Ionicons name="send-outline" size={48} color={COLORS.textMuted} />
+              <Text style={styles.emptyTitle}>Henüz teklif vermediniz</Text>
+              <Text style={styles.emptyDesc}>İş ilanları sekmesinden teklif verin</Text>
+            </View>
+          }
+        />
+      )}
+
+      {/* Teklif Ver Modali */}
+      <BidModal
+        visible={showBidModal}
+        onClose={() => { setShowBidModal(false); setSelectedJob(null); }}
+        job={selectedJob}
+        hairdresserId={user?.uid || ''}
+      />
+
+      {/* Fotoğraf Büyütme */}
+      <Modal visible={!!fullscreenPhoto} animationType="fade" transparent onRequestClose={() => setFullscreenPhoto(null)}>
+        <TouchableOpacity style={styles.photoModalOverlay} onPress={() => setFullscreenPhoto(null)} activeOpacity={1}>
+          <Text style={styles.photoModalLabel}>{fullscreenPhoto?.label}</Text>
+          <View style={styles.photoModalBox}>
+            {fullscreenPhoto?.uri
+              ? <Image source={{ uri: fullscreenPhoto.uri }} style={{ width: '100%', height: '100%', borderRadius: RADIUS.xl }} resizeMode="contain" />
+              : <Text style={{ fontSize: 100 }}>{fullscreenPhoto?.emoji}</Text>
+            }
+          </View>
+          <TouchableOpacity style={styles.photoModalClose} onPress={() => setFullscreenPhoto(null)}>
+            <Ionicons name="close" size={22} color={COLORS.white} />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+    </View>
+  );
+}
+
+// ─── STİLLER ───────────────────────────────────────────────
 const bidModalStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#1A0533', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '85%', borderTopWidth: 1, borderColor: COLORS.border },
+  container: { backgroundColor: '#1A0533', borderTopLeftRadius: 28, borderTopRightRadius: 28, maxHeight: '90%', borderTopWidth: 1, borderColor: COLORS.border },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   title: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary },
   closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
@@ -330,419 +689,26 @@ const bidModalStyles = StyleSheet.create({
   successRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: SPACING.sm },
   successText: { fontSize: FONTS.small, color: COLORS.success },
   noteWrapper: { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.md, padding: SPACING.md },
-  noteInput: { color: COLORS.textPrimary, fontSize: FONTS.regular, minHeight: 80, textAlignVertical: 'top' },
+  noteInput: { color: COLORS.textPrimary, fontSize: FONTS.regular, minHeight: 60, textAlignVertical: 'top' },
   charCount: { fontSize: 11, color: COLORS.textMuted, textAlign: 'right', marginTop: 4 },
+  previewCard: { marginHorizontal: SPACING.lg, marginBottom: SPACING.md, backgroundColor: COLORS.primary + '11', borderRadius: RADIUS.lg, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '33' },
+  previewLabel: { fontSize: 11, color: COLORS.primary, fontWeight: '700', marginBottom: 4 },
+  previewText: { fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 18 },
   footer: { padding: SPACING.lg, borderTopWidth: 1, borderTopColor: COLORS.border },
   sendBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
   sendBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 14 },
   sendBtnText: { fontSize: FONTS.regular, fontWeight: 'bold', color: COLORS.white },
 });
 
-// ─── İŞ KARTI ──────────────────────────────────────────────
-function JobCard({ job, onBid }: {
-  job: typeof DUMMY_JOBS[0];
-  onBid: () => void;
-}) {
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const [photoModal, setPhotoModal] = useState<{ visible: boolean; emoji: string; label: string }>({
-    visible: false, emoji: '', label: '',
-  });
-
-  const openPhoto = (emoji: string, label: string) => {
-    setPhotoModal({ visible: true, emoji, label });
-  };
-
-  return (
-    <>
-      <TouchableOpacity
-        onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.98, useNativeDriver: false }).start()}
-        onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
-        activeOpacity={1}
-      >
-        <Animated.View style={[styles.jobCard, { transform: [{ scale: scaleAnim }] }]}>
-          <LinearGradient
-            colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
-            style={styles.jobCardGradient}
-          >
-            {/* ── ÜST: MÜŞTERİ BİLGİSİ ── */}
-            <View style={styles.jobCardHeader}>
-              <View style={styles.customerInfo}>
-                <View style={styles.customerAvatarWrapper}>
-                  <LinearGradient
-                    colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
-                    style={styles.customerAvatar}
-                  >
-                    <Text style={styles.customerEmoji}>{job.customerEmoji}</Text>
-                  </LinearGradient>
-                </View>
-                <View style={styles.customerDetails}>
-                  <Text style={styles.customerName}>{job.customerName}</Text>
-                  <View style={styles.customerMeta}>
-                    <Ionicons name="location-outline" size={11} color={COLORS.textMuted} />
-                    <Text style={styles.customerMetaText}>{job.customerCity}</Text>
-                  </View>
-                  <View style={styles.customerStats}>
-                    <Ionicons name="star" size={11} color="#FFB844" />
-                    <Text style={styles.customerRating}>{job.customerRating}</Text>
-                    <Text style={styles.customerDot}>·</Text>
-                    <Text style={styles.customerJobCount}>{job.customerJobCount} iş</Text>
-                    <Text style={styles.customerDot}>·</Text>
-                    <Text style={styles.customerMemberSince}>{job.memberSince}'den beri</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Sağ badge'ler */}
-              <View style={styles.jobBadges}>
-                {job.isNew && (
-                  <View style={styles.newBadge}>
-                    <Text style={styles.newBadgeText}>YENİ</Text>
-                  </View>
-                )}
-                {job.isUrgent && (
-                  <View style={styles.urgentBadge}>
-                    <Ionicons name="flash" size={10} color={COLORS.warning} />
-                    <Text style={styles.urgentBadgeText}>ACİL</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* ── ORTACA: HİZMET + FOTOĞRAFLAR ── */}
-            <View style={styles.jobServiceRow}>
-              <View style={styles.jobServiceInfo}>
-                <View style={styles.jobServiceBadge}>
-                  <Ionicons name="cut-outline" size={13} color={COLORS.primary} />
-                  <Text style={styles.jobServiceText}>{job.service}</Text>
-                </View>
-                {job.colorPreference && (
-                  <View style={styles.jobColorBadge}>
-                    <View style={styles.jobColorDot} />
-                    <Text style={styles.jobColorText}>{job.colorPreference}</Text>
-                  </View>
-                )}
-              </View>
-            </View>
-
-            {/* Fotoğraflar — tıklayınca büyür */}
-            <View style={styles.photosRow}>
-              <TouchableOpacity
-                style={styles.photoCard}
-                onPress={() => openPhoto(job.customerEmoji, 'Şu Anki Görünüm')}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']}
-                  style={styles.photoCardGradient}
-                >
-                  <Text style={styles.photoEmoji}>{job.customerEmoji}</Text>
-                  <View style={styles.photoLabel}>
-                    <Text style={styles.photoLabelText}>Şu An</Text>
-                  </View>
-                  <View style={styles.zoomIcon}>
-                    <Ionicons name="expand-outline" size={12} color={COLORS.white} />
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-
-              <View style={styles.photoArrow}>
-                <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.photoArrowBg}>
-                  <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
-                </LinearGradient>
-                <Text style={styles.photoArrowLabel}>AI</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.photoCard}
-                onPress={() => openPhoto('✨', 'İstenen Görünüm')}
-                activeOpacity={0.85}
-              >
-                <LinearGradient
-                  colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-                  style={styles.photoCardGradient}
-                >
-                  <Text style={styles.photoEmoji}>✨</Text>
-                  <View style={[styles.photoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
-                    <Text style={styles.photoLabelText}>İstenen</Text>
-                  </View>
-                  <View style={styles.zoomIcon}>
-                    <Ionicons name="expand-outline" size={12} color={COLORS.white} />
-                  </View>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-
-            {/* Etiketler */}
-            <View style={styles.tagsRow}>
-              {job.tags.map((tag) => (
-                <View key={tag} style={styles.tag}>
-                  <Text style={styles.tagText}>{tag}</Text>
-                </View>
-              ))}
-            </View>
-
-            {/* Müşteri notu */}
-            <View style={styles.noteCard}>
-              <Ionicons name="chatbubble-ellipses-outline" size={13} color={COLORS.textMuted} />
-              <Text style={styles.noteText} numberOfLines={2}>{job.note}</Text>
-            </View>
-
-            {/* ── ALT: BÜTÇE + ZAMAN + TEKLİF ── */}
-            <View style={styles.jobCardFooter}>
-              <View style={styles.jobFooterLeft}>
-                <View style={styles.budgetBadge}>
-                  <Ionicons name="wallet-outline" size={14} color={COLORS.success} />
-                  <Text style={styles.budgetText}>₺{job.budget}</Text>
-                </View>
-                <View style={styles.timeBadge}>
-                  <Ionicons name="time-outline" size={12} color={COLORS.textMuted} />
-                  <Text style={styles.timeText}>{job.publishedAt}</Text>
-                </View>
-              </View>
-
-              <TouchableOpacity style={styles.bidBtn} onPress={onBid}>
-                <LinearGradient
-                  colors={[COLORS.primary, COLORS.primaryDark]}
-                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                  style={styles.bidBtnGradient}
-                >
-                  <Ionicons name="send-outline" size={14} color={COLORS.white} />
-                  <Text style={styles.bidBtnText}>Teklif Ver</Text>
-                </LinearGradient>
-              </TouchableOpacity>
-            </View>
-          </LinearGradient>
-        </Animated.View>
-      </TouchableOpacity>
-
-      {/* Fotoğraf büyütme modalı — kart içinde, modal içinde modal yok */}
-      <PhotoModal
-        visible={photoModal.visible}
-        onClose={() => setPhotoModal({ visible: false, emoji: '', label: '' })}
-        emoji={photoModal.emoji}
-        label={photoModal.label}
-      />
-    </>
-  );
-}
-
-// ─── ANA EKRAN ─────────────────────────────────────────────
-export default function HairdresserJobsScreen() {
-  const router = useRouter();
-  const { user } = useAuthStore();
-
-  const [activeTab, setActiveTab] = useState<'jobs' | 'mybids'>('jobs');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'new' | 'nearby' | 'matched'>('all');
-  const [selectedJob, setSelectedJob] = useState<typeof DUMMY_JOBS[0] | null>(null);
-  const [showBidModal, setShowBidModal] = useState(false);
-
-  const headerAnim = useRef(new Animated.Value(0)).current;
-  const contentOpacity = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
-      Animated.timing(contentOpacity, { toValue: 1, duration: 600, useNativeDriver: false }),
-    ]).start();
-  }, []);
-
-  const filteredJobs = DUMMY_JOBS.filter(j => {
-    if (activeFilter === 'new') return j.isNew;
-    if (activeFilter === 'nearby') return j.customerCity.includes('Kadıköy') || j.customerCity.includes('Beşiktaş');
-    if (activeFilter === 'matched') return ['Balayage', 'Keratin Bakım', 'Wolf Cut'].includes(j.service);
-    return true;
-  });
-
-  const bidStatusConfig = {
-    pending: { label: 'Bekliyor', color: '#FFB844', icon: 'time-outline' },
-    accepted: { label: 'Kabul Edildi', color: '#34D399', icon: 'checkmark-circle-outline' },
-    rejected: { label: 'Reddedildi', color: '#F87171', icon: 'close-circle-outline' },
-  };
-
-  return (
-    <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
-        start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
-      <View style={styles.orb1} />
-
-      {/* ── ÜST BAR ── */}
-      <Animated.View style={[styles.header, { opacity: headerAnim }]}>
-        <View>
-          <Text style={styles.title}>İş Havuzu</Text>
-          <Text style={styles.subtitle}>{filteredJobs.length} ilan mevcut</Text>
-        </View>
-        <TouchableOpacity style={styles.notifBtn}>
-          <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
-          <View style={styles.notifDot} />
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* ── SEKMELER ── */}
-      <View style={styles.tabRow}>
-        {[
-          { key: 'jobs', label: 'İş İlanları', count: DUMMY_JOBS.length },
-          { key: 'mybids', label: 'Tekliflerim', count: DUMMY_MY_BIDS.length },
-        ].map((tab) => (
-          <TouchableOpacity
-            key={tab.key}
-            style={[styles.tab, activeTab === tab.key && styles.tabActive]}
-            onPress={() => setActiveTab(tab.key as any)}
-          >
-            <Text style={[styles.tabText, activeTab === tab.key && styles.tabTextActive]}>
-              {tab.label}
-            </Text>
-            <View style={[styles.tabCount, activeTab === tab.key && styles.tabCountActive]}>
-              <Text style={[styles.tabCountText, activeTab === tab.key && styles.tabCountTextActive]}>
-                {tab.count}
-              </Text>
-            </View>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <Animated.View style={[{ flex: 1, opacity: contentOpacity }]}>
-
-        {activeTab === 'jobs' ? (
-          <>
-            {/* ── FİLTRELER ── */}
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              style={styles.filterScroll}
-              contentContainerStyle={styles.filterContent}
-            >
-              {[
-                { key: 'all', label: 'Tümü', icon: 'grid-outline' },
-                { key: 'new', label: 'Yeni', icon: 'sparkles-outline' },
-                { key: 'nearby', label: 'Yakınımda', icon: 'location-outline' },
-                { key: 'matched', label: 'Hizmetlerime Uygun', icon: 'checkmark-circle-outline' },
-              ].map((filter) => (
-                <TouchableOpacity
-                  key={filter.key}
-                  style={[styles.filterChip, activeFilter === filter.key && styles.filterChipActive]}
-                  onPress={() => setActiveFilter(filter.key as any)}
-                >
-                  <Ionicons
-                    name={filter.icon as any}
-                    size={13}
-                    color={activeFilter === filter.key ? COLORS.primary : COLORS.textMuted}
-                  />
-                  <Text style={[styles.filterChipText, activeFilter === filter.key && styles.filterChipTextActive]}>
-                    {filter.label}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* ── İŞ LİSTESİ ── */}
-            <FlatList
-              data={filteredJobs}
-              keyExtractor={(item) => item.id}
-              contentContainerStyle={styles.listContent}
-              showsVerticalScrollIndicator={false}
-              ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
-              renderItem={({ item }) => (
-                <JobCard
-                  job={item}
-                  onBid={() => { setSelectedJob(item); setShowBidModal(true); }}
-                />
-              )}
-              ListEmptyComponent={
-                <View style={styles.emptyContainer}>
-                  <Ionicons name="briefcase-outline" size={48} color={COLORS.textMuted} />
-                  <Text style={styles.emptyTitle}>İlan bulunamadı</Text>
-                  <Text style={styles.emptyDesc}>Filtre değiştirmeyi deneyin</Text>
-                </View>
-              }
-            />
-          </>
-        ) : (
-          /* ── TEKLİFLERİM ── */
-          <FlatList
-            data={DUMMY_MY_BIDS}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
-            renderItem={({ item }) => {
-              const statusConf = bidStatusConfig[item.status as keyof typeof bidStatusConfig];
-              return (
-                <TouchableOpacity
-                  style={styles.bidCard}
-                  onPress={() => router.push(`/chat/${item.chatId}` as any)}
-                >
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
-                    style={styles.bidCardGradient}
-                  >
-                    <View style={styles.bidCardHeader}>
-                      <View style={styles.bidCustomerInfo}>
-                        <Text style={styles.bidEmoji}>{item.customerEmoji}</Text>
-                        <View>
-                          <Text style={styles.bidCustomerName}>{item.customerName}</Text>
-                          <Text style={styles.bidService}>{item.service}</Text>
-                        </View>
-                      </View>
-                      <View style={[styles.bidStatusBadge, { backgroundColor: statusConf.color + '22', borderColor: statusConf.color + '44' }]}>
-                        <Ionicons name={statusConf.icon as any} size={12} color={statusConf.color} />
-                        <Text style={[styles.bidStatusText, { color: statusConf.color }]}>{statusConf.label}</Text>
-                      </View>
-                    </View>
-
-                    <View style={styles.bidCardFooter}>
-                      <View style={styles.bidPriceRow}>
-                        <Text style={styles.bidPriceLabel}>Teklifim</Text>
-                        <Text style={styles.bidPrice}>₺{item.myPrice}</Text>
-                        <Text style={styles.bidPriceSep}>/</Text>
-                        <Text style={styles.bidBudget}>Bütçe ₺{item.customerBudget}</Text>
-                      </View>
-                      <View style={styles.bidTimeRow}>
-                        <Ionicons name="time-outline" size={11} color={COLORS.textMuted} />
-                        <Text style={styles.bidTime}>{item.sentAt}</Text>
-                      </View>
-                    </View>
-
-                    {item.status !== 'rejected' && (
-                      <TouchableOpacity
-                        style={styles.goToChatBtn}
-                        onPress={() => router.push(`/chat/${item.chatId}` as any)}
-                      >
-                        <Text style={styles.goToChatText}>Sohbete Git</Text>
-                        <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
-                      </TouchableOpacity>
-                    )}
-                  </LinearGradient>
-                </TouchableOpacity>
-              );
-            }}
-          />
-        )}
-      </Animated.View>
-
-      {/* Teklif ver modalı */}
-      <BidModal
-        visible={showBidModal}
-        onClose={() => { setShowBidModal(false); setSelectedJob(null); }}
-        job={selectedJob}
-      />
-    </View>
-  );
-}
-
-// ─── STİLLER ───────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
-  orb1: { position: 'absolute', width: 250, height: 250, borderRadius: 125, backgroundColor: '#7C3AED', opacity: 0.12, top: -60, right: -60 },
+  orb: { position: 'absolute', width: 250, height: 250, borderRadius: 125, backgroundColor: '#7C3AED', opacity: 0.12, top: -60, right: -60 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: SPACING.lg, paddingTop: 56, paddingBottom: SPACING.md },
   title: { fontSize: FONTS.xxlarge, fontWeight: 'bold', color: COLORS.textPrimary },
   subtitle: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
-  notifBtn: { position: 'relative', width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
+  notifBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
   notifDot: { position: 'absolute', top: 8, right: 8, width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.error, borderWidth: 1.5, borderColor: COLORS.background },
-  // Sekmeler
-  tabRow: { flexDirection: 'row', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, padding: 4, borderWidth: 1, borderColor: COLORS.border },
+  tabRow: { flexDirection: 'row', marginHorizontal: SPACING.lg, marginBottom: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, padding: 4, borderWidth: 1, borderColor: COLORS.border },
   tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 10, borderRadius: RADIUS.lg },
   tabActive: { backgroundColor: COLORS.primary + '33', borderWidth: 1, borderColor: COLORS.primary + '66' },
   tabText: { fontSize: FONTS.small, color: COLORS.textMuted, fontWeight: '600' },
@@ -751,22 +717,19 @@ const styles = StyleSheet.create({
   tabCountActive: { backgroundColor: COLORS.primary + '44' },
   tabCountText: { fontSize: 10, color: COLORS.textMuted, fontWeight: 'bold' },
   tabCountTextActive: { color: COLORS.primary },
-  // Filtreler
-  filterScroll: { marginBottom: SPACING.md },
-  filterContent: { paddingHorizontal: SPACING.lg, gap: SPACING.sm },
+  filterScroll: { marginBottom: 10, flexGrow: 0, height: 44 },
+  filterContent: { paddingHorizontal: SPACING.lg, gap: SPACING.sm, flexDirection: 'row', alignItems: 'center' },
   filterChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, borderRadius: RADIUS.full, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: COLORS.border },
   filterChipActive: { backgroundColor: COLORS.primary + '22', borderColor: COLORS.primary },
-  filterChipText: { fontSize: FONTS.small, color: COLORS.textMuted, fontWeight: '600' },
-  filterChipTextActive: { color: COLORS.primary, fontWeight: '700' },
-  // Liste
-  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 160 },
-  // İş kartı
+  filterText: { fontSize: FONTS.small, color: COLORS.textMuted, fontWeight: '600' },
+  filterTextActive: { color: COLORS.primary, fontWeight: '700' },
+  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 160, paddingTop: SPACING.sm },
   jobCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   jobCardGradient: { padding: SPACING.md, gap: SPACING.md },
   jobCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   customerInfo: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.md, flex: 1 },
-  customerAvatarWrapper: { position: 'relative' },
-  customerAvatar: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
+  customerAvatar: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' },
+  avatarImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   customerEmoji: { fontSize: 24 },
   customerDetails: { flex: 1, gap: 2 },
   customerName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
@@ -774,50 +737,37 @@ const styles = StyleSheet.create({
   customerMetaText: { fontSize: 11, color: COLORS.textMuted },
   customerStats: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   customerRating: { fontSize: 11, color: '#FFB844', fontWeight: '600' },
-  customerDot: { fontSize: 11, color: COLORS.textMuted },
+  dot: { fontSize: 11, color: COLORS.textMuted },
   customerJobCount: { fontSize: 11, color: COLORS.textMuted },
-  customerMemberSince: { fontSize: 11, color: COLORS.textMuted },
   jobBadges: { gap: 4, alignItems: 'flex-end' },
-  newBadge: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, paddingVertical: 2, paddingHorizontal: 8 },
-  newBadgeText: { fontSize: 9, color: COLORS.white, fontWeight: 'bold' },
-  urgentBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.warning + '22', borderRadius: RADIUS.full, paddingVertical: 2, paddingHorizontal: 8, borderWidth: 1, borderColor: COLORS.warning + '44' },
-  urgentBadgeText: { fontSize: 9, color: COLORS.warning, fontWeight: 'bold' },
-  jobServiceRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  jobServiceInfo: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
-  jobServiceBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary + '18', paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.primary + '44' },
-  jobServiceText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '700' },
-  jobColorBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.08)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
-  jobColorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#c68642' },
-  jobColorText: { fontSize: FONTS.small, color: COLORS.textSecondary },
-  // Fotoğraflar
+  badge: { borderRadius: RADIUS.full, paddingVertical: 2, paddingHorizontal: 8 },
+  badgeText: { fontSize: 9, color: COLORS.white, fontWeight: 'bold' },
+  serviceRow: { flexDirection: 'row', gap: SPACING.sm, flexWrap: 'wrap' },
+  serviceBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.primary + '18', paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.primary + '44' },
+  serviceText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '700' },
+  colorBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: 'rgba(255,255,255,0.08)', paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
+  colorDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#c68642' },
+  colorText: { fontSize: FONTS.small, color: COLORS.textSecondary },
   photosRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   photoCard: { flex: 1, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  photoCardGradient: { aspectRatio: 3 / 4, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  photoGradient: { aspectRatio: 3 / 4, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  photoImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   photoEmoji: { fontSize: 40 },
   photoLabel: { position: 'absolute', bottom: 6, left: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS.sm, paddingVertical: 3, alignItems: 'center' },
   photoLabelText: { fontSize: 10, color: COLORS.white, fontWeight: '700' },
-  zoomIcon: { position: 'absolute', top: 6, right: 6, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: RADIUS.sm, padding: 3 },
   photoArrow: { alignItems: 'center', gap: 4 },
-  photoArrowBg: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  photoArrowLabel: { fontSize: 9, color: COLORS.primary, fontWeight: 'bold' },
-  // Etiketler
-  tagsRow: { flexDirection: 'row', gap: SPACING.xs, flexWrap: 'wrap' },
-  tag: { backgroundColor: 'rgba(255,255,255,0.08)', paddingVertical: 3, paddingHorizontal: 8, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.border },
-  tagText: { fontSize: 10, color: COLORS.textMuted, fontWeight: '600' },
-  // Not
+  arrowBg: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  aiLabel: { fontSize: 9, color: COLORS.primary, fontWeight: 'bold' },
   noteCard: { flexDirection: 'row', alignItems: 'flex-start', gap: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.md, padding: SPACING.sm },
   noteText: { flex: 1, fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 18 },
-  // Alt kısım
-  jobCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  jobFooterLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  cardFooter: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
   budgetBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.success + '18', paddingVertical: 5, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1, borderColor: COLORS.success + '44' },
   budgetText: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.success },
-  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  timeBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, flex: 1 },
   timeText: { fontSize: 11, color: COLORS.textMuted },
   bidBtn: { borderRadius: RADIUS.md, overflow: 'hidden' },
-  bidBtnGradient: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 16 },
+  bidBtnGradient: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 10, paddingHorizontal: 14 },
   bidBtnText: { fontSize: FONTS.small, fontWeight: 'bold', color: COLORS.white },
-  // Tekliflerim
   bidCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   bidCardGradient: { padding: SPACING.md, gap: SPACING.md },
   bidCardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -825,20 +775,22 @@ const styles = StyleSheet.create({
   bidEmoji: { fontSize: 32 },
   bidCustomerName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
   bidService: { fontSize: FONTS.small, color: COLORS.textMuted },
-  bidStatusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1 },
-  bidStatusText: { fontSize: FONTS.small, fontWeight: '700' },
-  bidCardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4, paddingHorizontal: 10, borderRadius: RADIUS.full, borderWidth: 1 },
+  statusText: { fontSize: FONTS.small, fontWeight: '700' },
   bidPriceRow: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   bidPriceLabel: { fontSize: FONTS.small, color: COLORS.textMuted },
   bidPrice: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.primary },
-  bidPriceSep: { fontSize: FONTS.small, color: COLORS.textMuted },
   bidBudget: { fontSize: FONTS.small, color: COLORS.textMuted },
-  bidTimeRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   bidTime: { fontSize: 11, color: COLORS.textMuted },
   goToChatBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 8, backgroundColor: COLORS.primary + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
   goToChatText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '700' },
-  // Boş durum
-  emptyContainer: { alignItems: 'center', paddingTop: 60, gap: SPACING.md },
+  empty: { alignItems: 'center', paddingTop: 60, gap: SPACING.md },
   emptyTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textSecondary },
   emptyDesc: { fontSize: FONTS.regular, color: COLORS.textMuted },
+  photoModalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.92)', justifyContent: 'center', alignItems: 'center', gap: SPACING.md },
+  photoModalLabel: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.white },
+  photoModalBox: { width: width * 0.85, height: width * 0.85, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border },
+  photoModalClose: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.15)', justifyContent: 'center', alignItems: 'center' },
+  withdrawBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: '#F87171' + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#F87171' + '44' },
+  withdrawBtnText: { fontSize: FONTS.small, color: '#F87171', fontWeight: '700' },
 });

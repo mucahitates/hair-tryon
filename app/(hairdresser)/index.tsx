@@ -104,7 +104,7 @@ const countdownStyles = StyleSheet.create({
 export default function HairdresserDashboard() {
   const router = useRouter();
   const { user } = useAuthStore();
-  
+
   // Canlı Veri State'leri
   const [isOnline, setIsOnline] = useState(true);
   const [salonName, setSalonName] = useState('Yükleniyor...');
@@ -461,7 +461,7 @@ export default function HairdresserDashboard() {
           {/* ── 6. KAMPANYA YARAT ── */}
           <View style={styles.section}>
             <SectionTitle title="Kampanya" icon="megaphone-outline" />
-            <TouchableOpacity style={styles.campaignCard} activeOpacity={0.85} 
+            <TouchableOpacity style={styles.campaignCard} activeOpacity={0.85}
               onPress={() => router.push('/(hairdresser)/campaign' as any)}>
               <LinearGradient
                 colors={['#7C3AED', '#A78BFA', '#C4B5FD']}
@@ -486,10 +486,14 @@ export default function HairdresserDashboard() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
-
           {/* ── 7. CARİ ÖZET ── */}
           <View style={[styles.section, { marginBottom: 140 }]}>
-            <SectionTitle title="Cari Özet" icon="bar-chart-outline" action="Detay" onAction={() => {}} />
+            <SectionTitle
+              title="Cari Özet"
+              icon="bar-chart-outline"
+              action="Detay"
+              onAction={() => router.push('/(hairdresser)/cari' as any)}
+            />
             <View style={styles.cariCard}>
               <LinearGradient
                 colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
@@ -551,13 +555,17 @@ export default function HairdresserDashboard() {
                 </View>
 
                 {/* Detay butonu */}
-                <TouchableOpacity style={styles.cariDetailBtn}>
+                <TouchableOpacity
+                  style={styles.cariDetailBtn}
+                  onPress={() => router.push('/(hairdresser)/cari' as any)}
+                >
                   <Text style={styles.cariDetailBtnText}>Tüm Cari Dökümü Gör</Text>
                   <Ionicons name="chevron-forward" size={16} color={COLORS.primary} />
                 </TouchableOpacity>
               </LinearGradient>
             </View>
           </View>
+
 
         </Animated.View>
       </ScrollView>

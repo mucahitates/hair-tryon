@@ -1,120 +1,46 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR SOHBET LİSTESİ (app/(hairdresser)/chats.tsx)
-// ─────────────────────────────────────────────────────────────
-// Kuaförün müşterilerle sohbetlerini listeler
-// Tümü / Okunmamış / Gruplar filtresi
-// Her karta tıklayınca kuaför chat detay ekranına gider
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/chats.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Animated,
-  TextInput,
-  Dimensions,
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  Animated, TextInput, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
-
-const { width } = Dimensions.get('window');
-
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_CHATS = [
-  {
-    id: 'chat1',
-    customerId: 'c1',
-    customerName: 'Ayşe Kaya',
-    customerEmoji: '👩',
-    isOnline: true,
-    lastMessage: 'Balayage için ne zaman müsaitsiniz?',
-    lastMessageAt: '14:32',
-    lastMessageType: 'text',
-    unreadCount: 2,
-    jobService: 'Balayage',
-    jobStatus: 'bidding',
-    bidPrice: 750,
-    appointmentDate: null as string | null,
-  },
-  {
-    id: 'chat2',
-    customerId: 'c2',
-    customerName: 'Fatma Şahin',
-    customerEmoji: '👩‍🦱',
-    isOnline: false,
-    lastMessage: 'Randevuyu onayladım, teşekkürler!',
-    lastMessageAt: 'Dün',
-    lastMessageType: 'text',
-    unreadCount: 0,
-    jobService: 'Keratin Bakım',
-    jobStatus: 'accepted',
-    bidPrice: 580,
-    appointmentDate: '28 Mayıs, 14:00' as string | null,
-  },
-  {
-    id: 'chat3',
-    customerId: 'c3',
-    customerName: 'Zeynep Mart',
-    customerEmoji: '👩‍🦰',
-    isOnline: true,
-    lastMessage: 'Wolf cut için fotoğraf gönderdim.',
-    lastMessageAt: 'Pazartesi',
-    lastMessageType: 'image',
-    unreadCount: 1,
-    jobService: 'Wolf Cut',
-    jobStatus: 'pending',
-    bidPrice: 350,
-    appointmentDate: null as string | null,
-  },
-  {
-    id: 'chat4',
-    customerId: 'c4',
-    customerName: 'Merve Yıldız',
-    customerEmoji: '👱‍♀️',
-    isOnline: false,
-    lastMessage: 'Harika sonuç, teşekkürler! ⭐⭐⭐⭐⭐',
-    lastMessageAt: '2 gün önce',
-    lastMessageType: 'text',
-    unreadCount: 0,
-    jobService: 'Ombre',
-    jobStatus: 'completed',
-    bidPrice: 700,
-    appointmentDate: null as string | null,
-  },
-];
+import {
+  collection, query, where, onSnapshot, orderBy,
+} from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
 
 // ─── SOHBET KARTI ──────────────────────────────────────────
-function ChatCard({ chat, onPress }: {
-  chat: typeof DUMMY_CHATS[0];
-  onPress: () => void;
-}) {
+function ChatCard({ chat, onPress }: { chat: any; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
-  const unreadAnim = useRef(new Animated.Value(0)).current;
 
-  useEffect(() => {
-    if (chat.unreadCount > 0) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(unreadAnim, { toValue: 1, duration: 800, useNativeDriver: false }),
-          Animated.timing(unreadAnim, { toValue: 0.7, duration: 800, useNativeDriver: false }),
-        ])
-      ).start();
-    }
-  }, [chat.unreadCount]);
-
-  const jobStatusColor = {
+  const jobStatusColor = ({
     pending: '#FFB844',
     bidding: COLORS.primary,
     accepted: '#34D399',
     completed: '#34D399',
     cancelled: '#F87171',
-  }[chat.jobStatus] || COLORS.textMuted;
+  } as Record<string, string>)[chat.jobStatus] || COLORS.textMuted;
+
+  const formatTime = (ts: any) => {
+    if (!ts) return '';
+    const date = ts.toDate ? ts.toDate() : new Date(ts);
+    const now = new Date();
+    const diffMins = Math.floor((now.getTime() - date.getTime()) / 60000);
+    const diffHrs = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHrs / 24);
+    if (diffMins < 1) return 'Şimdi';
+    if (diffMins < 60) return `${diffMins} dk`;
+    if (diffHrs < 24) return `${diffHrs} sa`;
+    if (diffDays === 1) return 'Dün';
+    return `${diffDays} gün`;
+  };
+
+  const unreadCount = chat.unreadByHairdresser ? 1 : 0;
 
   return (
     <TouchableOpacity
@@ -126,7 +52,7 @@ function ChatCard({ chat, onPress }: {
       <Animated.View style={[
         styles.chatCard,
         { transform: [{ scale: scaleAnim }] },
-        chat.unreadCount > 0 && styles.chatCardUnread,
+        unreadCount > 0 && styles.chatCardUnread,
       ]}>
         {/* Avatar */}
         <View style={styles.avatarContainer}>
@@ -134,121 +60,51 @@ function ChatCard({ chat, onPress }: {
             colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
             style={styles.avatar}
           >
-            <Text style={styles.avatarEmoji}>{chat.customerEmoji}</Text>
+            <Text style={styles.avatarEmoji}>{chat.customerEmoji || '👤'}</Text>
           </LinearGradient>
-          {chat.isOnline && <View style={styles.onlineDot} />}
         </View>
 
         {/* İçerik */}
         <View style={styles.chatContent}>
-          {/* Üst satır — isim + saat */}
           <View style={styles.chatTopRow}>
-            <Text style={[styles.customerName, chat.unreadCount > 0 && styles.customerNameBold]}>
-              {chat.customerName}
+            <Text style={[styles.customerName, unreadCount > 0 && styles.customerNameBold]}>
+              {chat.customerName || 'Müşteri'}
             </Text>
-            <Text style={styles.messageTime}>{chat.lastMessageAt}</Text>
+            <Text style={styles.messageTime}>{formatTime(chat.lastMessageTime)}</Text>
           </View>
 
-          {/* Badge satırı — iş durumu + fiyat + randevu */}
           <View style={styles.badgeRow}>
             <View style={[styles.jobBadge, { borderColor: jobStatusColor + '44', backgroundColor: jobStatusColor + '18' }]}>
               <View style={[styles.jobBadgeDot, { backgroundColor: jobStatusColor }]} />
-              <Text style={[styles.jobBadgeText, { color: jobStatusColor }]}>{chat.jobService}</Text>
+              <Text style={[styles.jobBadgeText, { color: jobStatusColor }]}>
+                {chat.jobService || chat.service || 'Hizmet'}
+              </Text>
             </View>
-            <View style={styles.priceBadge}>
-              <Text style={styles.priceBadgeText}>₺{chat.bidPrice}</Text>
-            </View>
-            {chat.appointmentDate && (
-              <View style={styles.appointmentBadge}>
-                <Ionicons name="calendar-outline" size={10} color={COLORS.primary} />
-                <Text style={styles.appointmentText}>{chat.appointmentDate}</Text>
+            {(chat.bidPrice > 0) && (
+              <View style={styles.priceBadge}>
+                <Text style={styles.priceBadgeText}>₺{chat.bidPrice}</Text>
               </View>
             )}
           </View>
 
-          {/* Son mesaj */}
           <View style={styles.lastMessageRow}>
-            {chat.lastMessageType === 'image' && (
-              <Ionicons name="image-outline" size={12} color={COLORS.textMuted} />
-            )}
             <Text
-              style={[styles.lastMessage, chat.unreadCount > 0 && styles.lastMessageUnread]}
+              style={[styles.lastMessage, unreadCount > 0 && styles.lastMessageUnread]}
               numberOfLines={1}
             >
-              {chat.lastMessage}
+              {chat.lastMessage || 'Sohbet başladı'}
             </Text>
           </View>
         </View>
 
         {/* Okunmamış badge */}
-        {chat.unreadCount > 0 && (
-          <Animated.View style={[styles.unreadBadge, { opacity: unreadAnim }]}>
-            <Text style={styles.unreadCount}>{chat.unreadCount}</Text>
-          </Animated.View>
+        {unreadCount > 0 && (
+          <View style={styles.unreadBadge}>
+            <Text style={styles.unreadCount}>●</Text>
+          </View>
         )}
       </Animated.View>
     </TouchableOpacity>
-  );
-}
-
-// ─── BOŞ DURUM ─────────────────────────────────────────────
-function EmptyChats({ search, activeFilter }: {
-  search: string;
-  activeFilter: 'all' | 'unread' | 'groups';
-}) {
-  const floatAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(floatAnim, { toValue: -10, duration: 1500, useNativeDriver: false }),
-        Animated.timing(floatAnim, { toValue: 0, duration: 1500, useNativeDriver: false }),
-      ])
-    ).start();
-  }, []);
-
-  if (activeFilter === 'groups') {
-    return (
-      <View style={styles.emptyContainer}>
-        <LinearGradient
-          colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-          style={styles.emptyIcon}
-        >
-          <Ionicons name="people-outline" size={52} color={COLORS.primary} />
-        </LinearGradient>
-        <Text style={styles.emptyTitle}>Gruplar yakında</Text>
-        <Text style={styles.emptyDesc}>
-          Müşterilerinizi gruplandırarak toplu mesaj atabileceksiniz
-        </Text>
-      </View>
-    );
-  }
-
-  if (search.length > 0) {
-    return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="search-outline" size={40} color={COLORS.textMuted} />
-        <Text style={styles.emptyTitle}>Sonuç bulunamadı</Text>
-        <Text style={styles.emptyDesc}>"{search}" için sohbet bulunamadı</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View style={styles.emptyContainer}>
-      <Animated.View style={{ transform: [{ translateY: floatAnim }] }}>
-        <LinearGradient
-          colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-          style={styles.emptyIcon}
-        >
-          <Ionicons name="chatbubbles-outline" size={52} color={COLORS.primary} />
-        </LinearGradient>
-      </Animated.View>
-      <Text style={styles.emptyTitle}>Henüz sohbet yok</Text>
-      <Text style={styles.emptyDesc}>
-        Müşteriler iş ilanı açınca veya mesaj atınca sohbetler burada görünür
-      </Text>
-    </View>
   );
 }
 
@@ -257,36 +113,56 @@ export default function HairdresserChatsScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
 
+  const [chats, setChats] = useState<any[]>([]);
   const [search, setSearch] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'unread' | 'groups'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'unread'>('all');
+  const [loading, setLoading] = useState(true);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const listOpacity = useRef(new Animated.Value(0)).current;
-  const listAnim = useRef(new Animated.Value(30)).current;
 
   useEffect(() => {
-    Animated.parallel([
-      Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
-      Animated.timing(listOpacity, { toValue: 1, duration: 600, useNativeDriver: false }),
-      Animated.timing(listAnim, { toValue: 0, duration: 500, useNativeDriver: false }),
-    ]).start();
+    Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }).start();
   }, []);
 
-  const filteredChats = DUMMY_CHATS.filter(c => {
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const q = query(
+      collection(db, 'chats'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('lastMessageTime', 'desc')
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setChats(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+
+    return unsub;
+  }, [user?.uid]);
+
+  const filteredChats = chats.filter(c => {
     const matchSearch =
-      c.customerName.toLowerCase().includes(search.toLowerCase()) ||
-      c.jobService.toLowerCase().includes(search.toLowerCase()) ||
-      c.lastMessage.toLowerCase().includes(search.toLowerCase());
+      (c.customerName || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.jobService || c.service || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.lastMessage || '').toLowerCase().includes(search.toLowerCase());
 
     const matchFilter =
-      activeFilter === 'all' ? true :
-      activeFilter === 'unread' ? c.unreadCount > 0 :
-      false;
+      activeFilter === 'unread' ? c.unreadByHairdresser === true : true;
 
     return matchSearch && matchFilter;
   });
 
-  const totalUnread = DUMMY_CHATS.reduce((acc, c) => acc + c.unreadCount, 0);
+  const unreadCount = chats.filter(c => c.unreadByHairdresser).length;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -302,9 +178,9 @@ export default function HairdresserChatsScreen() {
         <View>
           <View style={styles.titleRow}>
             <Text style={styles.title}>Mesajlar</Text>
-            {totalUnread > 0 && (
+            {unreadCount > 0 && (
               <View style={styles.totalUnreadBadge}>
-                <Text style={styles.totalUnreadText}>{totalUnread}</Text>
+                <Text style={styles.totalUnreadText}>{unreadCount}</Text>
               </View>
             )}
           </View>
@@ -329,25 +205,24 @@ export default function HairdresserChatsScreen() {
         )}
       </View>
 
-      {/* ── FİLTRE CHİPLERİ ── */}
+      {/* ── FİLTRELER ── */}
       <View style={styles.filterRow}>
         {[
-          { key: 'all', label: 'Tümü', count: DUMMY_CHATS.length },
-          { key: 'unread', label: 'Okunmamış', count: DUMMY_CHATS.filter(c => c.unreadCount > 0).length },
-          { key: 'groups', label: '👥 Gruplar', count: 0 },
-        ].map((filter) => (
+          { key: 'all', label: 'Tümü', count: chats.length },
+          { key: 'unread', label: 'Okunmamış', count: unreadCount },
+        ].map((f) => (
           <TouchableOpacity
-            key={filter.key}
-            style={[styles.filterChip, activeFilter === filter.key && styles.filterChipActive]}
-            onPress={() => setActiveFilter(filter.key as any)}
+            key={f.key}
+            style={[styles.filterChip, activeFilter === f.key && styles.filterChipActive]}
+            onPress={() => setActiveFilter(f.key as any)}
           >
-            <Text style={[styles.filterChipText, activeFilter === filter.key && styles.filterChipTextActive]}>
-              {filter.label}
+            <Text style={[styles.filterChipText, activeFilter === f.key && styles.filterChipTextActive]}>
+              {f.label}
             </Text>
-            {filter.count > 0 && (
-              <View style={[styles.filterCount, activeFilter === filter.key && styles.filterCountActive]}>
-                <Text style={[styles.filterCountText, activeFilter === filter.key && styles.filterCountTextActive]}>
-                  {filter.count}
+            {f.count > 0 && (
+              <View style={[styles.filterCount, activeFilter === f.key && styles.filterCountActive]}>
+                <Text style={[styles.filterCountText, activeFilter === f.key && styles.filterCountTextActive]}>
+                  {f.count}
                 </Text>
               </View>
             )}
@@ -356,25 +231,38 @@ export default function HairdresserChatsScreen() {
       </View>
 
       {/* ── SOHBET LİSTESİ ── */}
-      <Animated.View style={[styles.listContainer, { opacity: listOpacity, transform: [{ translateY: listAnim }] }]}>
-        {filteredChats.length > 0 && activeFilter !== 'groups' ? (
-          <FlatList
-            data={filteredChats}
-            keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.listContent}
-            showsVerticalScrollIndicator={false}
-            ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
-            renderItem={({ item }) => (
-              <ChatCard
-                chat={item}
-                onPress={() => router.push(`/(hairdresser)/chat/${item.id}` as any)}
-              />
-            )}
-          />
-        ) : (
-          <EmptyChats search={search} activeFilter={activeFilter} />
-        )}
-      </Animated.View>
+      {filteredChats.length > 0 ? (
+        <FlatList
+          data={filteredChats}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
+          ItemSeparatorComponent={() => <View style={{ height: SPACING.sm }} />}
+          renderItem={({ item }) => (
+            <ChatCard
+              chat={item}
+              onPress={() => router.push(`/(hairdresser)/chat/${item.id}` as any)}
+            />
+          )}
+        />
+      ) : (
+        <View style={styles.emptyContainer}>
+          <LinearGradient
+            colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
+            style={styles.emptyIcon}
+          >
+            <Ionicons name="chatbubbles-outline" size={52} color={COLORS.primary} />
+          </LinearGradient>
+          <Text style={styles.emptyTitle}>
+            {search.length > 0 ? 'Sonuç bulunamadı' : 'Henüz sohbet yok'}
+          </Text>
+          <Text style={styles.emptyDesc}>
+            {search.length > 0
+              ? `"${search}" için sohbet bulunamadı`
+              : 'Müşterilere teklif verince sohbetler burada görünür'}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -400,14 +288,12 @@ const styles = StyleSheet.create({
   filterCountActive: { backgroundColor: COLORS.primary + '44' },
   filterCountText: { fontSize: 10, color: COLORS.textMuted, fontWeight: 'bold' },
   filterCountTextActive: { color: COLORS.primary },
-  listContainer: { flex: 1 },
   listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 160 },
   chatCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.xl, padding: SPACING.md },
   chatCardUnread: { backgroundColor: 'rgba(167,139,250,0.1)', borderColor: COLORS.primary + '44' },
   avatarContainer: { position: 'relative' },
   avatar: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center' },
   avatarEmoji: { fontSize: 26 },
-  onlineDot: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.success, borderWidth: 2, borderColor: COLORS.background },
   chatContent: { flex: 1, gap: 4 },
   chatTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   customerName: { fontSize: FONTS.medium, color: COLORS.textPrimary, fontWeight: '600' },
@@ -419,13 +305,11 @@ const styles = StyleSheet.create({
   jobBadgeText: { fontSize: 10, fontWeight: '700' },
   priceBadge: { backgroundColor: COLORS.primary + '18', paddingVertical: 2, paddingHorizontal: 8, borderRadius: RADIUS.full },
   priceBadgeText: { fontSize: 10, color: COLORS.primary, fontWeight: '700' },
-  appointmentBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.primary + '18', paddingVertical: 2, paddingHorizontal: 7, borderRadius: RADIUS.full },
-  appointmentText: { fontSize: 10, color: COLORS.primary, fontWeight: '600' },
   lastMessageRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   lastMessage: { fontSize: FONTS.small, color: COLORS.textMuted, flex: 1 },
   lastMessageUnread: { color: COLORS.textSecondary, fontWeight: '600' },
-  unreadBadge: { backgroundColor: COLORS.primary, borderRadius: RADIUS.full, minWidth: 22, height: 22, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
-  unreadCount: { fontSize: 11, color: COLORS.white, fontWeight: 'bold' },
+  unreadBadge: { justifyContent: 'center', alignItems: 'center' },
+  unreadCount: { fontSize: 18, color: COLORS.primary },
   emptyContainer: { alignItems: 'center', paddingTop: 80, gap: SPACING.md, paddingHorizontal: SPACING.xl },
   emptyIcon: { width: 110, height: 110, borderRadius: 55, justifyContent: 'center', alignItems: 'center' },
   emptyTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textSecondary },

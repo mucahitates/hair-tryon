@@ -1,96 +1,50 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR TAKVİM EKRANI (app/(hairdresser)/appointments.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/appointments.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Animated,
-  Dimensions,
-  Modal,
-  Alert,
-  FlatList,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Animated, Dimensions, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import {
+  collection, query, where, onSnapshot, orderBy,
+  doc, updateDoc,
+} from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
 
 const { width } = Dimensions.get('window');
 
-// ─── TİPLER ────────────────────────────────────────────────
-type AppointmentStatus = 'pending' | 'confirmed' | 'cancelled' | 'completed';
+const TR_DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
+const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
-interface Appointment {
-  id: string;
-  customerId: string;
-  customerName: string;
-  customerEmoji: string;
-  hairdresserId: string;
-  service: string;
-  date: string;
-  time: string;
-  duration: number;
-  price: number;
-  status: AppointmentStatus;
-  chatId: string;
-  note?: string;
-}
-
-// ─── DUMMY VERİ ────────────────────────────────────────────
 const today = new Date();
 const formatDate = (date: Date) => date.toISOString().split('T')[0];
+const todayStr = formatDate(today);
 
-const getDateOffset = (days: number) => {
-  const d = new Date(today);
-  d.setDate(d.getDate() + days);
-  return formatDate(d);
-};
-
-const DUMMY_APPOINTMENTS: Appointment[] = [
-  { id: 'a1', customerId: 'c1', customerName: 'Ayşe Kaya', customerEmoji: '👩', hairdresserId: 'h1', service: 'Balayage', date: getDateOffset(0), time: '10:00', duration: 120, price: 750, status: 'confirmed', chatId: 'chat1', note: 'Doğal geçiş istedi' },
-  { id: 'a2', customerId: 'c2', customerName: 'Fatma Şahin', customerEmoji: '👩‍🦱', hairdresserId: 'h1', service: 'Keratin', date: getDateOffset(0), time: '13:00', duration: 90, price: 600, status: 'confirmed', chatId: 'chat2' },
-  { id: 'a3', customerId: 'c3', customerName: 'Zeynep Mart', customerEmoji: '👩‍🦰', hairdresserId: 'h1', service: 'Wolf Cut', date: getDateOffset(0), time: '15:30', duration: 60, price: 350, status: 'pending', chatId: 'chat3' },
-  { id: 'a4', customerId: 'c4', customerName: 'Merve Yıldız', customerEmoji: '👱‍♀️', hairdresserId: 'h1', service: 'Ombre', date: getDateOffset(1), time: '11:00', duration: 150, price: 700, status: 'confirmed', chatId: 'chat4' },
-  { id: 'a5', customerId: 'c5', customerName: 'Selin Arslan', customerEmoji: '👩‍🦳', hairdresserId: 'h1', service: 'Saç Boyama', date: getDateOffset(1), time: '14:00', duration: 90, price: 400, status: 'pending', chatId: 'chat5' },
-  { id: 'a6', customerId: 'c6', customerName: 'Elif Demir', customerEmoji: '👩‍🦱', hairdresserId: 'h1', service: 'Balayage', date: getDateOffset(2), time: '10:00', duration: 120, price: 750, status: 'confirmed', chatId: 'chat6' },
-  { id: 'a7', customerId: 'c7', customerName: 'Hande Koç', customerEmoji: '👩', hairdresserId: 'h1', service: 'Keratin', date: getDateOffset(2), time: '13:00', duration: 90, price: 600, status: 'confirmed', chatId: 'chat7' },
-  { id: 'a8', customerId: 'c8', customerName: 'Büşra Aktaş', customerEmoji: '👱‍♀️', hairdresserId: 'h1', service: 'Kesim', date: getDateOffset(2), time: '15:00', duration: 45, price: 200, status: 'pending', chatId: 'chat8' },
-  { id: 'a9', customerId: 'c9', customerName: 'Nilay Yurt', customerEmoji: '👩‍🦰', hairdresserId: 'h1', service: 'Perma', date: getDateOffset(2), time: '16:30', duration: 140, price: 450, status: 'confirmed', chatId: 'chat9' },
-  { id: 'a10', customerId: 'c10', customerName: 'Ceyda Öz', customerEmoji: '👩‍🦱', hairdresserId: 'h1', service: 'Ombre', date: getDateOffset(3), time: '09:30', duration: 150, price: 700, status: 'confirmed', chatId: 'chat10' },
-  { id: 'a11', customerId: 'c11', customerName: 'Pınar Kara', customerEmoji: '👩', hairdresserId: 'h1', service: 'Saç Boyama', date: getDateOffset(4), time: '11:00', duration: 90, price: 400, status: 'pending', chatId: 'chat11' },
-  { id: 'a12', customerId: 'c12', customerName: 'Deniz Ay', customerEmoji: '👩‍🦳', hairdresserId: 'h1', service: 'Wolf Cut', date: getDateOffset(4), time: '14:30', duration: 60, price: 350, status: 'confirmed', chatId: 'chat12' },
-];
-
-// ─── YARDIMCI FONKSİYONLAR ─────────────────────────────────
-const getDayColor = (count: number): { bg: string; border: string; text: string } => {
+const getDayColor = (count: number) => {
   if (count === 0) return { bg: 'transparent', border: 'transparent', text: COLORS.textMuted };
   if (count <= 2) return { bg: '#34D399' + '33', border: '#34D399', text: '#34D399' };
   if (count <= 4) return { bg: '#FFB844' + '33', border: '#FFB844', text: '#FFB844' };
   return { bg: '#F87171' + '33', border: '#F87171', text: '#F87171' };
 };
 
-const getStatusConfig = (status: AppointmentStatus) => ({
+const getStatusConfig = (status: string) => ({
   pending: { label: 'Bekliyor', color: '#FFB844', icon: 'time-outline' },
   confirmed: { label: 'Onaylandı', color: '#34D399', icon: 'checkmark-circle-outline' },
   cancelled: { label: 'İptal', color: '#F87171', icon: 'close-circle-outline' },
   completed: { label: 'Tamamlandı', color: '#60A5FA', icon: 'checkmark-done-outline' },
-}[status]);
-
-const TR_DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
-const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+}[status] || { label: status, color: COLORS.textMuted, icon: 'help-outline' });
 
 // ─── GÜN DETAY MODALI ──────────────────────────────────────
-// ─── GÜN DETAY MODALI ──────────────────────────────────────
-function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMessage }: {
+function DayDetailModal({ visible, onClose, date, appointments, onConfirm, onCancel, onMessage }: {
   visible: boolean;
   onClose: () => void;
   date: string;
-  appointments: Appointment[];
+  appointments: any[];
+  onConfirm: (id: string) => void;
   onCancel: (id: string) => void;
   onMessage: (chatId: string) => void;
 }) {
@@ -108,8 +62,9 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
 
   const dateObj = new Date(date);
   const dayStr = `${TR_DAYS[dateObj.getDay()]} ${dateObj.getDate()} ${TR_MONTHS[dateObj.getMonth()]}`;
-  const totalEarning = appointments.filter(a => a.status !== 'cancelled').reduce((acc, a) => acc + a.price, 0);
-  const totalDuration = appointments.filter(a => a.status !== 'cancelled').reduce((acc, a) => acc + a.duration, 0);
+  const activeApts = appointments.filter(a => a.status !== 'cancelled');
+  const totalEarning = activeApts.reduce((acc: number, a: any) => acc + (a.price || 0), 0);
+  const totalDuration = activeApts.reduce((acc: number, a: any) => acc + (a.duration || 0), 0);
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
@@ -117,10 +72,8 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <Animated.View style={[modalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
-
           <View style={modalStyles.handle} />
 
-          {/* Başlık */}
           <View style={modalStyles.header}>
             <View>
               <Text style={modalStyles.dateTitle}>{dayStr}</Text>
@@ -146,15 +99,14 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
             </View>
             <View style={modalStyles.summaryDivider} />
             <View style={modalStyles.summaryItem}>
-              <Ionicons name="people-outline" size={16} color="#FFB844" />
-              <Text style={modalStyles.summaryValue}>{appointments.filter(a => a.status === 'confirmed').length}</Text>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#FFB844" />
+              <Text style={modalStyles.summaryValue}>{appointments.filter((a: any) => a.status === 'confirmed').length}</Text>
               <Text style={modalStyles.summaryLabel}>Onaylı</Text>
             </View>
           </View>
 
-          {/* Randevular */}
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={modalStyles.list}>
-            {appointments.sort((a, b) => a.time.localeCompare(b.time)).map((apt) => {
+            {[...appointments].sort((a, b) => (a.time || '').localeCompare(b.time || '')).map((apt) => {
               const statusConf = getStatusConfig(apt.status);
               const isExpanded = expandedId === apt.id;
 
@@ -165,9 +117,9 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                     style={modalStyles.aptCardGradient}
                   >
                     <View style={[modalStyles.aptColorBar, { backgroundColor: statusConf.color }]} />
-
                     <View style={modalStyles.aptContent}>
-                      {/* Üst satır — tıklanınca detay açılır */}
+
+                      {/* Üst satır */}
                       <TouchableOpacity
                         style={modalStyles.aptTopRow}
                         onPress={() => setExpandedId(isExpanded ? null : apt.id)}
@@ -178,7 +130,7 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                             colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
                             style={modalStyles.aptAvatar}
                           >
-                            <Text style={modalStyles.aptEmoji}>{apt.customerEmoji}</Text>
+                            <Text style={modalStyles.aptEmoji}>{apt.customerEmoji || '👤'}</Text>
                           </LinearGradient>
                           <View>
                             <Text style={modalStyles.aptName}>{apt.customerName}</Text>
@@ -190,15 +142,11 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                             <Ionicons name={statusConf.icon as any} size={11} color={statusConf.color} />
                             <Text style={[modalStyles.statusText, { color: statusConf.color }]}>{statusConf.label}</Text>
                           </View>
-                          <Ionicons
-                            name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                            size={16}
-                            color={COLORS.textMuted}
-                          />
+                          <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
                         </View>
                       </TouchableOpacity>
 
-                      {/* Meta bilgiler — her zaman görünür */}
+                      {/* Meta */}
                       <View style={modalStyles.aptMeta}>
                         <View style={modalStyles.aptMetaItem}>
                           <Ionicons name="time-outline" size={13} color={COLORS.primary} />
@@ -214,99 +162,29 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                         </View>
                       </View>
 
-                      {/* ── DETAY BÖLÜMÜ — koşullu inline, modal değil ── */}
+                      {/* Genişletilmiş detay */}
                       {isExpanded && (
                         <View style={modalStyles.expandedSection}>
-
-                          {/* AI Öncesi / Sonrası */}
-                          <View style={modalStyles.expandedPhotos}>
-                            <View style={modalStyles.expandedPhotoCard}>
-                              <LinearGradient
-                                colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
-                                style={modalStyles.expandedPhoto}
-                              >
-                                <Text style={modalStyles.expandedPhotoEmoji}>{apt.customerEmoji}</Text>
-                                <View style={modalStyles.expandedPhotoLabel}>
-                                  <Text style={modalStyles.expandedPhotoLabelText}>Şu An</Text>
-                                </View>
-                              </LinearGradient>
-                            </View>
-
-                            <View style={modalStyles.expandedArrow}>
-                              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={modalStyles.expandedArrowBg}>
-                                <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
-                              </LinearGradient>
-                              <Text style={modalStyles.expandedArrowLabel}>AI</Text>
-                            </View>
-
-                            <View style={modalStyles.expandedPhotoCard}>
-                              <LinearGradient
-                                colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
-                                style={modalStyles.expandedPhoto}
-                              >
-                                <Text style={modalStyles.expandedPhotoEmoji}>✨</Text>
-                                <View style={[modalStyles.expandedPhotoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
-                                  <Text style={modalStyles.expandedPhotoLabelText}>İstenen</Text>
-                                </View>
-                              </LinearGradient>
-                            </View>
-                          </View>
-
-                          {/* Detay kartı */}
                           <View style={modalStyles.expandedDetailCard}>
-
-                            {/* Hizmet */}
-                            <View style={modalStyles.expandedDetailRow}>
-                              <View style={modalStyles.expandedDetailIcon}>
-                                <Ionicons name="cut-outline" size={16} color={COLORS.primary} />
-                              </View>
-                              <View style={modalStyles.expandedDetailInfo}>
-                                <Text style={modalStyles.expandedDetailLabel}>Hizmet</Text>
-                                <Text style={modalStyles.expandedDetailValue}>{apt.service}</Text>
-                              </View>
-                            </View>
-
-                            <View style={modalStyles.expandedDivider} />
-
-                            {/* Saat & Süre */}
-                            <View style={modalStyles.expandedDetailRow}>
-                              <View style={modalStyles.expandedDetailIcon}>
-                                <Ionicons name="time-outline" size={16} color={COLORS.primary} />
-                              </View>
-                              <View style={modalStyles.expandedDetailInfo}>
-                                <Text style={modalStyles.expandedDetailLabel}>Saat & Süre</Text>
-                                <Text style={modalStyles.expandedDetailValue}>{apt.time} · {apt.duration} dakika</Text>
-                              </View>
-                            </View>
-
-                            <View style={modalStyles.expandedDivider} />
-
-                            {/* Ücret */}
-                            <View style={modalStyles.expandedDetailRow}>
-                              <View style={modalStyles.expandedDetailIcon}>
-                                <Ionicons name="cash-outline" size={16} color="#34D399" />
-                              </View>
-                              <View style={modalStyles.expandedDetailInfo}>
-                                <Text style={modalStyles.expandedDetailLabel}>Ücret</Text>
-                                <Text style={[modalStyles.expandedDetailValue, { color: '#34D399' }]}>₺{apt.price}</Text>
-                              </View>
-                            </View>
-
-                            {/* Not */}
-                            {apt.note && (
-                              <>
-                                <View style={modalStyles.expandedDivider} />
+                            {[
+                              { icon: 'cut-outline', label: 'Hizmet', value: apt.service, color: COLORS.primary },
+                              { icon: 'time-outline', label: 'Saat & Süre', value: `${apt.time} · ${apt.duration} dakika`, color: COLORS.primary },
+                              { icon: 'cash-outline', label: 'Ücret', value: `₺${apt.price}`, color: '#34D399' },
+                              ...(apt.note ? [{ icon: 'document-text-outline', label: 'Müşteri Notu', value: apt.note, color: COLORS.textMuted }] : []),
+                            ].map((item: any, i, arr) => (
+                              <View key={item.label}>
                                 <View style={modalStyles.expandedDetailRow}>
                                   <View style={modalStyles.expandedDetailIcon}>
-                                    <Ionicons name="document-text-outline" size={16} color={COLORS.primary} />
+                                    <Ionicons name={item.icon as any} size={16} color={item.color} />
                                   </View>
                                   <View style={modalStyles.expandedDetailInfo}>
-                                    <Text style={modalStyles.expandedDetailLabel}>Müşteri Notu</Text>
-                                    <Text style={modalStyles.expandedDetailValue}>{apt.note}</Text>
+                                    <Text style={modalStyles.expandedDetailLabel}>{item.label}</Text>
+                                    <Text style={[modalStyles.expandedDetailValue, { color: item.color }]}>{item.value}</Text>
                                   </View>
                                 </View>
-                              </>
-                            )}
+                                {i < arr.length - 1 && <View style={modalStyles.expandedDivider} />}
+                              </View>
+                            ))}
                           </View>
                         </View>
                       )}
@@ -314,16 +192,15 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
                       {/* Aksiyon butonları */}
                       {apt.status !== 'cancelled' && apt.status !== 'completed' && (
                         <View style={modalStyles.aptActions}>
-                          <TouchableOpacity
-                            style={modalStyles.msgBtn}
-                            onPress={() => onMessage(apt.chatId)}
-                          >
-                            <Ionicons name="chatbubble-outline" size={14} color={COLORS.primary} />
-                            <Text style={modalStyles.msgBtnText}>Mesaj At</Text>
-                          </TouchableOpacity>
+                          {apt.chatId && (
+                            <TouchableOpacity style={modalStyles.msgBtn} onPress={() => onMessage(apt.chatId)}>
+                              <Ionicons name="chatbubble-outline" size={14} color={COLORS.primary} />
+                              <Text style={modalStyles.msgBtnText}>Mesaj At</Text>
+                            </TouchableOpacity>
+                          )}
 
                           {apt.status === 'pending' && (
-                            <TouchableOpacity style={modalStyles.confirmBtn}>
+                            <TouchableOpacity style={modalStyles.confirmBtn} onPress={() => onConfirm(apt.id)}>
                               <LinearGradient
                                 colors={['#34D399', '#059669']}
                                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -337,10 +214,14 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
 
                           <TouchableOpacity
                             style={modalStyles.cancelBtn}
-                            onPress={() => Alert.alert('Randevuyu İptal Et', `${apt.customerName} ile ${apt.time} randevusunu iptal etmek istediğine emin misin?`, [
-                              { text: 'Vazgeç', style: 'cancel' },
-                              { text: 'İptal Et', style: 'destructive', onPress: () => onCancel(apt.id) },
-                            ])}
+                            onPress={() => Alert.alert(
+                              'Randevuyu İptal Et',
+                              `${apt.customerName} ile ${apt.time} randevusunu iptal etmek istediğine emin misin?`,
+                              [
+                                { text: 'Vazgeç', style: 'cancel' },
+                                { text: 'İptal Et', style: 'destructive', onPress: () => onCancel(apt.id) },
+                              ]
+                            )}
                           >
                             <Ionicons name="close-outline" size={14} color="#F87171" />
                             <Text style={modalStyles.cancelBtnText}>İptal</Text>
@@ -359,69 +240,13 @@ function DayDetailModal({ visible, onClose, date, appointments, onCancel, onMess
   );
 }
 
-const modalStyles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '85%', overflow: 'hidden' },
-  handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, paddingTop: SPACING.md },
-  dateTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary },
-  dateSubtitle: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
-  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
-  summaryRow: { flexDirection: 'row', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
-  summaryItem: { flex: 1, alignItems: 'center', gap: 3 },
-  summaryDivider: { width: 1, backgroundColor: COLORS.border },
-  summaryValue: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
-  summaryLabel: { fontSize: 10, color: COLORS.textMuted },
-  list: { paddingHorizontal: SPACING.lg, paddingBottom: 40, gap: SPACING.sm },
-  aptCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  aptCardGradient: { flexDirection: 'row' },
-  aptColorBar: { width: 4 },
-  aptContent: { flex: 1, padding: SPACING.md, gap: SPACING.sm },
-  aptTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  aptCustomer: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  aptAvatar: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
-  aptEmoji: { fontSize: 20 },
-  aptName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
-  aptService: { fontSize: FONTS.small, color: COLORS.textMuted },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 3, paddingHorizontal: 8, borderRadius: RADIUS.full, borderWidth: 1 },
-  statusText: { fontSize: 10, fontWeight: '700' },
-  aptMeta: { flexDirection: 'row', gap: SPACING.md },
-  aptMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  aptMetaText: { fontSize: FONTS.small, color: COLORS.textMuted },
-  aptNote: { flexDirection: 'row', alignItems: 'flex-start', gap: 5, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: RADIUS.sm, padding: SPACING.sm },
-  aptNoteText: { flex: 1, fontSize: FONTS.small, color: COLORS.textMuted, lineHeight: 16 },
-  aptActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs },
-  msgBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: COLORS.primary + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
-  msgBtnText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
-  confirmBtn: { flex: 1, borderRadius: RADIUS.md, overflow: 'hidden' },
-  confirmBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 },
-  confirmBtnText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '700' },
-  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: '#F87171' + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#F87171' + '44' },
-  cancelBtnText: { fontSize: FONTS.small, color: '#F87171', fontWeight: '600' },
-  aptTopRight: { alignItems: 'flex-end', gap: 4 },
-  expandedSection: { gap: SPACING.md, marginTop: SPACING.sm, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
-  expandedPhotos: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  expandedPhotoCard: { flex: 1 },
-  expandedPhoto: { aspectRatio: 3 / 4, borderRadius: RADIUS.lg, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border, position: 'relative' },
-  expandedPhotoEmoji: { fontSize: 28 },
-  expandedPhotoLabel: { position: 'absolute', bottom: 5, left: 5, right: 5, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS.sm, paddingVertical: 2, alignItems: 'center' },
-  expandedPhotoLabelText: { fontSize: 9, color: COLORS.white, fontWeight: '800' },
-  expandedArrow: { alignItems: 'center', gap: 3 },
-  expandedArrowBg: { width: 26, height: 26, borderRadius: 13, justifyContent: 'center', alignItems: 'center' },
-  expandedArrowLabel: { fontSize: 8, color: COLORS.primary, fontWeight: 'bold' },
-  expandedDetailCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  expandedDetailRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.sm, gap: SPACING.sm },
-  expandedDetailIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center' },
-  expandedDetailInfo: { flex: 1 },
-  expandedDetailLabel: { fontSize: 10, color: COLORS.textMuted, marginBottom: 1 },
-  expandedDetailValue: { fontSize: FONTS.small, fontWeight: '600', color: COLORS.textPrimary },
-  expandedDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.sm },
-});
-
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function HairdresserAppointmentsScreen() {
   const router = useRouter();
-  const [appointments, setAppointments] = useState(DUMMY_APPOINTMENTS);
+  const { user } = useAuthStore();
+
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [showDayModal, setShowDayModal] = useState(false);
   const [currentWeekOffset, setCurrentWeekOffset] = useState(0);
@@ -436,7 +261,24 @@ export default function HairdresserAppointmentsScreen() {
     ]).start();
   }, []);
 
-  // Haftanın günlerini oluştur
+  // Firestore dinleyici
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const q = query(
+      collection(db, 'appointments'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('date', 'asc')
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      setAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, [user?.uid]);
+
   const getWeekDays = () => {
     const days = [];
     for (let i = 0; i < 7; i++) {
@@ -448,38 +290,50 @@ export default function HairdresserAppointmentsScreen() {
   };
 
   const weekDays = getWeekDays();
-  const todayStr = formatDate(today);
-
-  // O güne ait randevular
-  const getAppointmentsForDate = (date: string) =>
-    appointments.filter(a => a.date === date);
-
-  // Seçili güne ait randevular
-  const selectedAppointments = selectedDate ? getAppointmentsForDate(selectedDate) : [];
-
-  // Randevu iptal
-  const handleCancel = (id: string) => {
-    setAppointments(prev =>
-      prev.map(a => a.id === id ? { ...a, status: 'cancelled' } : a)
-    );
-  };
-
-  // Mesaj at
-  const handleMessage = (chatId: string) => {
-    setShowDayModal(false);
-    setTimeout(() => router.push(`/(hairdresser)/chats` as any), 300);
-  };
-
-  // Bugünkü özet
-  const todayApts = getAppointmentsForDate(todayStr);
-  const todayEarning = todayApts.filter(a => a.status !== 'cancelled').reduce((acc, a) => acc + a.price, 0);
-  const confirmedCount = todayApts.filter(a => a.status === 'confirmed').length;
-  const pendingCount = todayApts.filter(a => a.status === 'pending').length;
-
-  // Hafta başlığı
   const weekStart = weekDays[0];
   const weekEnd = weekDays[6];
   const weekTitle = `${weekStart.getDate()} - ${weekEnd.getDate()} ${TR_MONTHS[weekEnd.getMonth()]}`;
+
+  const getAppointmentsForDate = (date: string) =>
+    appointments.filter(a => a.date === date);
+
+  // Firestore: Onayla
+  const handleConfirm = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: 'confirmed' });
+    } catch (e) {
+      Alert.alert('Hata', 'Randevu onaylanamadı.');
+    }
+  };
+
+  // Firestore: İptal et
+  const handleCancel = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'appointments', id), { status: 'cancelled' });
+    } catch (e) {
+      Alert.alert('Hata', 'Randevu iptal edilemedi.');
+    }
+  };
+
+  // Mesaj at — sohbet ekranına yönlendir
+  const handleMessage = (chatId: string) => {
+    setShowDayModal(false);
+    setTimeout(() => router.push(`/(hairdresser)/chat/${chatId}` as any), 300);
+  };
+
+  const todayApts = getAppointmentsForDate(todayStr);
+  const todayEarning = todayApts.filter(a => a.status !== 'cancelled').reduce((acc, a) => acc + (a.price || 0), 0);
+  const confirmedCount = todayApts.filter(a => a.status === 'confirmed').length;
+  const pendingCount = todayApts.filter(a => a.status === 'pending').length;
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -511,9 +365,7 @@ export default function HairdresserAppointmentsScreen() {
             >
               <View style={styles.todaySummaryLeft}>
                 <Text style={styles.todaySummaryLabel}>Bugün</Text>
-                <Text style={styles.todaySummaryDate}>
-                  {today.getDate()} {TR_MONTHS[today.getMonth()]}
-                </Text>
+                <Text style={styles.todaySummaryDate}>{today.getDate()} {TR_MONTHS[today.getMonth()]}</Text>
               </View>
               <View style={styles.todaySummaryStats}>
                 <View style={styles.todaySummaryStat}>
@@ -536,36 +388,26 @@ export default function HairdresserAppointmentsScreen() {
 
           {/* ── HAFTALIK TAKVİM ── */}
           <View style={styles.calendarSection}>
-            {/* Hafta navigasyonu */}
             <View style={styles.weekNav}>
-              <TouchableOpacity
-                style={styles.weekNavBtn}
-                onPress={() => setCurrentWeekOffset(prev => prev - 1)}
-              >
+              <TouchableOpacity style={styles.weekNavBtn} onPress={() => setCurrentWeekOffset(p => p - 1)}>
                 <Ionicons name="chevron-back" size={20} color={COLORS.textPrimary} />
               </TouchableOpacity>
               <Text style={styles.weekTitle}>{weekTitle}</Text>
-              <TouchableOpacity
-                style={styles.weekNavBtn}
-                onPress={() => setCurrentWeekOffset(prev => prev + 1)}
-              >
+              <TouchableOpacity style={styles.weekNavBtn} onPress={() => setCurrentWeekOffset(p => p + 1)}>
                 <Ionicons name="chevron-forward" size={20} color={COLORS.textPrimary} />
               </TouchableOpacity>
             </View>
 
-            {/* Gün isimleri */}
             <View style={styles.dayNamesRow}>
               {TR_DAYS.map((d) => (
                 <Text key={d} style={styles.dayName}>{d}</Text>
               ))}
             </View>
 
-            {/* Günler */}
             <View style={styles.daysRow}>
               {weekDays.map((day) => {
                 const dateStr = formatDate(day);
-                const dayApts = getAppointmentsForDate(dateStr);
-                const count = dayApts.filter(a => a.status !== 'cancelled').length;
+                const count = getAppointmentsForDate(dateStr).filter(a => a.status !== 'cancelled').length;
                 const colors = getDayColor(count);
                 const isToday = dateStr === todayStr;
                 const isSelected = dateStr === selectedDate;
@@ -581,12 +423,10 @@ export default function HairdresserAppointmentsScreen() {
                       isSelected && styles.dayBtnSelected,
                     ]}
                     onPress={() => {
-                      if (count > 0) {
-                        setSelectedDate(dateStr);
-                        setShowDayModal(true);
-                      }
+                      setSelectedDate(dateStr);
+                      setShowDayModal(true);
                     }}
-                    activeOpacity={count > 0 ? 0.7 : 1}
+                    activeOpacity={0.7}
                   >
                     <Text style={[
                       styles.dayNumber,
@@ -595,20 +435,13 @@ export default function HairdresserAppointmentsScreen() {
                     ]}>
                       {day.getDate()}
                     </Text>
-
-                    {/* Randevu sayısı */}
-                    {count > 0 && (
-                      <Text style={[styles.dayCount, { color: colors.text }]}>{count}</Text>
-                    )}
-
-                    {/* Bugün nokta */}
+                    {count > 0 && <Text style={[styles.dayCount, { color: colors.text }]}>{count}</Text>}
                     {isToday && <View style={styles.todayDot} />}
                   </TouchableOpacity>
                 );
               })}
             </View>
 
-            {/* Renk açıklaması */}
             <View style={styles.legend}>
               {[
                 { color: '#34D399', label: '1-2 randevu' },
@@ -692,6 +525,14 @@ export default function HairdresserAppointmentsScreen() {
                   </TouchableOpacity>
                 );
               })}
+
+            {appointments.filter(a => a.date >= todayStr && a.status !== 'cancelled').length === 0 && (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="calendar-outline" size={48} color={COLORS.textMuted} />
+                <Text style={styles.emptyTitle}>Yaklaşan randevu yok</Text>
+                <Text style={styles.emptyDesc}>Müşterilerden randevu gelince burada görünür</Text>
+              </View>
+            )}
           </View>
 
         </Animated.View>
@@ -704,6 +545,7 @@ export default function HairdresserAppointmentsScreen() {
           onClose={() => setShowDayModal(false)}
           date={selectedDate}
           appointments={getAppointmentsForDate(selectedDate)}
+          onConfirm={handleConfirm}
           onCancel={handleCancel}
           onMessage={handleMessage}
         />
@@ -780,5 +622,55 @@ const styles = StyleSheet.create({
   upcomingMeta: { flexDirection: 'row', gap: SPACING.md },
   upcomingMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   upcomingMetaText: { fontSize: 11, color: COLORS.textMuted },
-  
+  emptyContainer: { alignItems: 'center', paddingTop: 40, gap: SPACING.md },
+  emptyTitle: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.textSecondary },
+  emptyDesc: { fontSize: FONTS.small, color: COLORS.textMuted, textAlign: 'center' },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '85%', overflow: 'hidden' },
+  handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, paddingTop: SPACING.md },
+  dateTitle: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary },
+  dateSubtitle: { fontSize: FONTS.small, color: COLORS.textMuted, marginTop: 2 },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
+  summaryRow: { flexDirection: 'row', marginHorizontal: SPACING.lg, marginBottom: SPACING.md, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border },
+  summaryItem: { flex: 1, alignItems: 'center', gap: 3 },
+  summaryDivider: { width: 1, backgroundColor: COLORS.border },
+  summaryValue: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
+  summaryLabel: { fontSize: 10, color: COLORS.textMuted },
+  list: { paddingHorizontal: SPACING.lg, paddingBottom: 40, gap: SPACING.sm },
+  aptCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  aptCardGradient: { flexDirection: 'row' },
+  aptColorBar: { width: 4 },
+  aptContent: { flex: 1, padding: SPACING.md, gap: SPACING.sm },
+  aptTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  aptCustomer: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
+  aptAvatar: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center' },
+  aptEmoji: { fontSize: 20 },
+  aptName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
+  aptService: { fontSize: FONTS.small, color: COLORS.textMuted },
+  aptTopRight: { alignItems: 'flex-end', gap: 4 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingVertical: 3, paddingHorizontal: 8, borderRadius: RADIUS.full, borderWidth: 1 },
+  statusText: { fontSize: 10, fontWeight: '700' },
+  aptMeta: { flexDirection: 'row', gap: SPACING.md },
+  aptMetaItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  aptMetaText: { fontSize: FONTS.small, color: COLORS.textMuted },
+  aptActions: { flexDirection: 'row', gap: SPACING.sm, marginTop: SPACING.xs, flexWrap: 'wrap' },
+  msgBtn: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: COLORS.primary + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
+  msgBtnText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '600' },
+  confirmBtn: { flex: 1, borderRadius: RADIUS.md, overflow: 'hidden' },
+  confirmBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 7 },
+  confirmBtnText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '700' },
+  cancelBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 7, paddingHorizontal: 12, backgroundColor: '#F87171' + '18', borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#F87171' + '44' },
+  cancelBtnText: { fontSize: FONTS.small, color: '#F87171', fontWeight: '600' },
+  expandedSection: { paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: COLORS.border },
+  expandedDetailCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  expandedDetailRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.sm, gap: SPACING.sm },
+  expandedDetailIcon: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center' },
+  expandedDetailInfo: { flex: 1 },
+  expandedDetailLabel: { fontSize: 10, color: COLORS.textMuted, marginBottom: 1 },
+  expandedDetailValue: { fontSize: FONTS.small, fontWeight: '600', color: COLORS.textPrimary },
+  expandedDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.sm },
 });

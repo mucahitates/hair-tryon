@@ -216,7 +216,7 @@ export default function HairdresserLayout() {
         <Stack.Screen name="chats" />
         <Stack.Screen name="portfolio" />
         <Stack.Screen name="profile" />
-        <Stack.Screen name="chat/[chatId]" />       
+        {/* <Stack.Screen name="chat/[chatId]" /> */}
         <Stack.Screen name="campaign" />
       </Stack>
 

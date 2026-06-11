@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR PORTFOLYO EKRANI (app/(hairdresser)/portfolio.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/portfolio.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -16,188 +13,51 @@ import {
   Alert,
   TextInput,
   Image,
+  ActivityIndicator,
+  Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+// FIREBASE IMPORTS
+import { collection, query, where, onSnapshot, doc, addDoc, deleteDoc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+
 const { width, height } = Dimensions.get('window');
 
-// ─── GRID HESAPLAMASI (BOŞLUKLAR EKLENDİ) ────────────────────
-const GRID_GAP = 6; // Kartlar arası boşluk
-const GRID_ITEM_SIZE = (width - (GRID_GAP * 4)) / 3; // Kenar boşlukları ve aralıklar çıkarılarak 3'e bölündü
+const GRID_GAP = 6;
+const GRID_ITEM_SIZE = (width - (GRID_GAP * 4)) / 3;
 
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_PROFILE = {
-  salonName: 'Salon Elegance',
-  ownerName: 'Aylin Çelik',
-  city: 'İstanbul / Kadıköy',
-  bio: 'Profesyonel saç boyama & kesim uzmanı ✂️ 8 yıllık deneyim 💫 Randevu için DM',
-  avatar: null,
-  totalJobs: 124,
-  followers: 892,
-  following: 45,
-  rating: 4.8,
-  instagram: '@salonelegance',
-  specialties: ['Balayage', 'Ombre', 'Wolf Cut', 'Keratin'],
-};
-
-const DUMMY_PORTFOLIO = [
-  {
-    id: 'p1',
-    service: 'Balayage',
-    category: 'Renk',
-    colorInfo: 'Karamel & Bal Sarısı',
-    price: 750,
-    duration: 180,
-    date: '24 Mayıs 2025',
-    beforeEmoji: '😐',
-    afterEmoji: '✨',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 48,
-    comments: 12,
-    views: 234,
-    saves: 18,
-    isLiked: false,
-    isSaved: false,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: false,
-    customerName: 'Ayşe K.',
-    note: 'Doğal geçişli balayage. İşlem süresi 3 saat.',
-    fromJob: true,
-  },
-  {
-    id: 'p2',
-    service: 'Wolf Cut',
-    category: 'Kesim',
-    colorInfo: null,
-    price: 350,
-    duration: 60,
-    date: '20 Mayıs 2025',
-    beforeEmoji: '😶',
-    afterEmoji: '🔥',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 92,
-    comments: 24,
-    views: 567,
-    saves: 41,
-    isLiked: true,
-    isSaved: false,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: true,
-    customerName: null,
-    note: 'Textured wolf cut, layered kesim.',
-    fromJob: true,
-  },
-  {
-    id: 'p3',
-    service: 'Keratin Bakım',
-    category: 'Bakım',
-    colorInfo: null,
-    price: 600,
-    duration: 120,
-    date: '15 Mayıs 2025',
-    beforeEmoji: '😔',
-    afterEmoji: '💫',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 31,
-    comments: 7,
-    views: 189,
-    saves: 12,
-    isLiked: false,
-    isSaved: true,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: false,
-    customerName: 'Fatma Ş.',
-    note: 'Brezilya keratin, 2 ay kalıcı.',
-    fromJob: false,
-  },
-  {
-    id: 'p4',
-    service: 'Ombre',
-    category: 'Renk',
-    colorInfo: 'Koyu Kahve → Karamel',
-    price: 700,
-    duration: 150,
-    date: '10 Mayıs 2025',
-    beforeEmoji: '😑',
-    afterEmoji: '🌟',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 156,
-    comments: 38,
-    views: 891,
-    saves: 67,
-    isLiked: true,
-    isSaved: true,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: false,
-    customerName: 'Merve Y.',
-    note: 'Doğal geçişli ombre, 3 aşamalı renk.',
-    fromJob: true,
-  },
-  {
-    id: 'p5',
-    service: 'Perma',
-    category: 'Kimyasal',
-    colorInfo: null,
-    price: 450,
-    duration: 140,
-    date: '5 Mayıs 2025',
-    beforeEmoji: '😪',
-    afterEmoji: '🌀',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 67,
-    comments: 15,
-    views: 312,
-    saves: 28,
-    isLiked: false,
-    isSaved: false,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: true,
-    customerName: null,
-    note: 'Kalıcı ondülasyon, 6 ay kalıcı.',
-    fromJob: false,
-  },
-  {
-    id: 'p6',
-    service: 'Saç Boyama',
-    category: 'Renk',
-    colorInfo: 'Bakır Kırmızı',
-    price: 400,
-    duration: 90,
-    date: '1 Mayıs 2025',
-    beforeEmoji: '😒',
-    afterEmoji: '🎨',
-    beforePhoto: null,
-    afterPhoto: null,
-    likes: 203,
-    comments: 52,
-    views: 1243,
-    saves: 89,
-    isLiked: true,
-    isSaved: false,
-    isHidden: false,
-    customerConsent: true,
-    isAnonymous: false,
-    customerName: 'Selin A.',
-    note: 'Bakır kırmızı tek renk boyama.',
-    fromJob: true,
-  },
-];
-
-type PortfolioItem = typeof DUMMY_PORTFOLIO[0];
+interface PortfolioItem {
+  id: string;
+  service: string;
+  category: string;
+  colorInfo?: string | null;
+  price: number;
+  duration: number;
+  date: string;
+  beforeEmoji: string;
+  afterEmoji: string;
+  beforePhoto?: string | null;
+  afterPhoto?: string | null;
+  likes: number;
+  comments: number;
+  views: number;
+  saves: number;
+  isLiked: boolean;
+  isSaved: boolean;
+  isHidden: boolean;
+  customerConsent: boolean;
+  isAnonymous: boolean;
+  customerName?: string | null;
+  note?: string | null;
+  fromJob: boolean;
+}
 
 // ─── TAM EKRAN DETAY MODALI ────────────────────────────────
 function DetailModal({ visible, onClose, item }: {
@@ -224,12 +84,34 @@ function DetailModal({ visible, onClose, item }: {
 
   if (!item) return null;
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
+  const handleLike = async () => {
+    const nextLikeState = !isLiked;
+    setIsLiked(nextLikeState);
     Animated.sequence([
       Animated.spring(likeAnim, { toValue: 1.4, tension: 80, friction: 4, useNativeDriver: true }),
       Animated.spring(likeAnim, { toValue: 1, tension: 80, friction: 4, useNativeDriver: true }),
     ]).start();
+
+    // Veritabanındaki beğeni sayısını güncelleme
+    try {
+      const docRef = doc(db, 'portfolio', item.id);
+      await updateDoc(docRef, {
+        likes: item.likes + (nextLikeState ? 1 : 0),
+        isLiked: nextLikeState
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSaveToggle = async () => {
+    const nextSaveState = !isSaved;
+    setIsSaved(nextSaveState);
+    try {
+      await updateDoc(doc(db, 'portfolio', item.id), { isSaved: nextSaveState });
+    } catch (e) {
+      console.error(e);
+    }
   };
 
   const categoryColors: Record<string, string> = {
@@ -238,27 +120,35 @@ function DetailModal({ visible, onClose, item }: {
   };
   const catColor = categoryColors[item.category] || COLORS.primary;
 
+  const currentPhoto = activeTab === 'before' ? item.beforePhoto : item.afterPhoto;
+
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      <Animated.View style={[detailStyles.container, { transform: [{ translateY: slideAnim }] }]}>
-        <LinearGradient colors={['#140824', '#090514']} style={StyleSheet.absoluteFill} />
+      <View style={detailStyles.container}>
+        <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateY: slideAnim }] }]}>
+          <LinearGradient colors={['#140824', '#090514']} style={StyleSheet.absoluteFill} />
 
-        {/* Kapat */}
-        <TouchableOpacity style={detailStyles.closeBtn} onPress={onClose}>
-          <Ionicons name="chevron-down" size={28} color={COLORS.white} />
-        </TouchableOpacity>
+          {/* Kapat */}
+          <TouchableOpacity style={detailStyles.closeBtn} onPress={onClose}>
+            <Ionicons name="chevron-down" size={28} color={COLORS.white} />
+          </TouchableOpacity>
 
-        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
 
-          {/* Fotoğraf */}
-          <View style={detailStyles.photoBox}>
-            <LinearGradient
-              colors={activeTab === 'before' ? ['#1A1C29', '#12141F'] : ['#2A1F3D', '#1A0F2E']}
-              style={detailStyles.photoGradient}
-            >
-              <Text style={detailStyles.photoEmoji}>
-                {activeTab === 'before' ? item.beforeEmoji : item.afterEmoji}
-              </Text>
+            {/* Fotoğraf Alanı */}
+            <View style={detailStyles.photoBox}>
+              {currentPhoto ? (
+                <Image source={{ uri: currentPhoto }} style={detailStyles.fullPhoto} />
+              ) : (
+                <LinearGradient
+                  colors={activeTab === 'before' ? ['#1A1C29', '#12141F'] : ['#2A1F3D', '#1A0F2E']}
+                  style={detailStyles.photoGradient}
+                >
+                  <Text style={detailStyles.photoEmoji}>
+                    {activeTab === 'before' ? item.beforeEmoji : item.afterEmoji}
+                  </Text>
+                </LinearGradient>
+              )}
 
               {/* Önce/Sonra toggle — resmin üzerinde */}
               <View style={detailStyles.toggleWrapper}>
@@ -284,93 +174,94 @@ function DetailModal({ visible, onClose, item }: {
               <View style={[detailStyles.catBadge, { backgroundColor: catColor + '33', borderColor: catColor + '66' }]}>
                 <Text style={[detailStyles.catBadgeText, { color: catColor }]}>{item.category}</Text>
               </View>
-            </LinearGradient>
-          </View>
+            </View>
 
-          {/* İçerik */}
-          <View style={detailStyles.content}>
+            {/* İçerik */}
+            <View style={detailStyles.content}>
 
-            {/* Başlık satırı */}
-            <View style={detailStyles.titleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={detailStyles.serviceName}>{item.service}</Text>
-                {item.colorInfo && (
-                  <Text style={detailStyles.colorInfo}>{item.colorInfo}</Text>
+              {/* Başlık satırı */}
+              <View style={detailStyles.titleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={detailStyles.serviceName}>{item.service}</Text>
+                  {item.colorInfo && (
+                    <Text style={detailStyles.colorInfo}>{item.colorInfo}</Text>
+                  )}
+                </View>
+                <View style={detailStyles.priceBadge}>
+                  <Text style={detailStyles.priceText}>₺{item.price}</Text>
+                </View>
+              </View>
+
+              {/* Detay badge'leri */}
+              <View style={detailStyles.badgesRow}>
+                <View style={detailStyles.badge}>
+                  <Ionicons name="time-outline" size={14} color={COLORS.primary} />
+                  <Text style={detailStyles.badgeText}>{item.duration} dk</Text>
+                </View>
+                <View style={detailStyles.badge}>
+                  <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
+                  <Text style={detailStyles.badgeText}>{item.date}</Text>
+                </View>
+                {!item.isAnonymous && item.customerName && (
+                  <View style={detailStyles.badge}>
+                    <Ionicons name="person-outline" size={14} color={COLORS.textMuted} />
+                    <Text style={detailStyles.badgeText}>{item.customerName}</Text>
+                  </View>
+                )}
+                {item.fromJob && (
+                  <View style={[detailStyles.badge, { borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '11' }]}>
+                    <Ionicons name="briefcase-outline" size={14} color={COLORS.primary} />
+                    <Text style={[detailStyles.badgeText, { color: COLORS.primary }]}>Uygulama işi</Text>
+                  </View>
                 )}
               </View>
-              <View style={detailStyles.priceBadge}>
-                <Text style={detailStyles.priceText}>₺{item.price}</Text>
-              </View>
-            </View>
 
-            {/* Detay badge'leri */}
-            <View style={detailStyles.badgesRow}>
-              <View style={detailStyles.badge}>
-                <Ionicons name="time-outline" size={14} color={COLORS.primary} />
-                <Text style={detailStyles.badgeText}>{item.duration} dk</Text>
-              </View>
-              <View style={detailStyles.badge}>
-                <Ionicons name="calendar-outline" size={14} color={COLORS.textMuted} />
-                <Text style={detailStyles.badgeText}>{item.date}</Text>
-              </View>
-              {!item.isAnonymous && item.customerName && (
-                <View style={detailStyles.badge}>
-                  <Ionicons name="person-outline" size={14} color={COLORS.textMuted} />
-                  <Text style={detailStyles.badgeText}>{item.customerName}</Text>
+              {/* Not */}
+              {item.note && (
+                <View style={detailStyles.noteBox}>
+                  <Text style={detailStyles.noteText}>{item.note}</Text>
                 </View>
               )}
-              {item.fromJob && (
-                <View style={[detailStyles.badge, { borderColor: COLORS.primary + '44', backgroundColor: COLORS.primary + '11' }]}>
-                  <Ionicons name="briefcase-outline" size={14} color={COLORS.primary} />
-                  <Text style={[detailStyles.badgeText, { color: COLORS.primary }]}>Uygulama işi</Text>
-                </View>
-              )}
-            </View>
 
-            {/* Not */}
-            {item.note && (
-              <View style={detailStyles.noteBox}>
-                <Text style={detailStyles.noteText}>{item.note}</Text>
+              {/* Aksiyon butonları */}
+              <View style={detailStyles.actionsRow}>
+                <TouchableOpacity style={detailStyles.actionBtn} onPress={handleLike}>
+                  <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
+                    <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color={isLiked ? '#F87171' : COLORS.textSecondary} />
+                  </Animated.View>
+                  <Text style={detailStyles.actionCount}>{item.likes + (isLiked && !item.isLiked ? 1 : 0)}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={detailStyles.actionBtn}>
+                  <Ionicons name="chatbubble-outline" size={24} color={COLORS.textSecondary} />
+                  <Text style={detailStyles.actionCount}>{item.comments}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={detailStyles.actionBtn}>
+                  <Ionicons name="eye-outline" size={24} color={COLORS.textSecondary} />
+                  <Text style={detailStyles.actionCount}>{item.views}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={detailStyles.actionBtn} onPress={handleSaveToggle}>
+                  <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={24} color={isSaved ? COLORS.primary : COLORS.textSecondary} />
+                  <Text style={detailStyles.actionCount}>{item.saves}</Text>
+                </TouchableOpacity>
               </View>
-            )}
 
-            {/* Aksiyon butonları */}
-            <View style={detailStyles.actionsRow}>
-              <TouchableOpacity style={detailStyles.actionBtn} onPress={handleLike}>
-                <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
-                  <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color={isLiked ? '#F87171' : COLORS.textSecondary} />
-                </Animated.View>
-                <Text style={detailStyles.actionCount}>{item.likes + (isLiked && !item.isLiked ? 1 : 0)}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={detailStyles.actionBtn}>
-                <Ionicons name="chatbubble-outline" size={24} color={COLORS.textSecondary} />
-                <Text style={detailStyles.actionCount}>{item.comments}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={detailStyles.actionBtn}>
-                <Ionicons name="eye-outline" size={24} color={COLORS.textSecondary} />
-                <Text style={detailStyles.actionCount}>{item.views}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={detailStyles.actionBtn} onPress={() => setIsSaved(!isSaved)}>
-                <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={24} color={isSaved ? COLORS.primary : COLORS.textSecondary} />
-                <Text style={detailStyles.actionCount}>{item.saves}</Text>
-              </TouchableOpacity>
             </View>
-
-          </View>
-        </ScrollView>
-      </Animated.View>
+          </ScrollView>
+        </Animated.View>
+      </View>
     </Modal>
   );
 }
 
 const detailStyles = StyleSheet.create({
-  container: { flex: 1, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-  closeBtn: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
-  photoBox: { width, height: width * 1.2 },
+  container: { flex: 1 },
+  closeBtn: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+  photoBox: { width, height: width * 1.2, position: 'relative' },
+  fullPhoto: { width: '100%', height: '100%', resizeMode: 'cover' },
   photoGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoEmoji: { fontSize: 120 },
-  toggleWrapper: { position: 'absolute', bottom: SPACING.lg, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: RADIUS.full, padding: 4 },
-  toggleBtn: { paddingVertical: 10, paddingHorizontal: 28, borderRadius: RADIUS.full },
+  toggleWrapper: { position: 'absolute', bottom: SPACING.lg, left: SPACING.lg, right: SPACING.lg, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: RADIUS.full, padding: 4, justifyContent: 'center', alignSelf: 'center', width: 200 },
+  toggleBtn: { paddingVertical: 8, paddingHorizontal: 24, borderRadius: RADIUS.full },
   toggleActive: { backgroundColor: COLORS.primary },
   toggleText: { fontSize: FONTS.regular, color: COLORS.textMuted, fontWeight: '600' },
   toggleActiveText: { color: COLORS.white, fontWeight: 'bold' },
@@ -404,6 +295,9 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
   const [duration, setDuration] = useState('');
   const [note, setNote] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
+  const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
+  const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
+
   const slideAnim = useRef(new Animated.Value(height)).current;
 
   useEffect(() => {
@@ -412,18 +306,48 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
     } else {
       Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => {
         setService(''); setCategory(''); setPrice(''); setDuration(''); setNote(''); setIsAnonymous(false);
+        setBeforePhoto(null); setAfterPhoto(null);
       });
     }
   }, [visible]);
+
+  const handlePickImage = async (type: 'before' | 'after') => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('İzin Gerekli', 'Galeriye erişmek için izin vermelisiniz.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [3, 4],
+        quality: 0.8
+      });
+      if (!result.canceled && result.assets[0]) {
+        if (type === 'before') setBeforePhoto(result.assets[0].uri);
+        else setAfterPhoto(result.assets[0].uri);
+      }
+    } catch (e) {
+      Alert.alert('Hata', 'Görsel seçilemedi.');
+    }
+  };
 
   const handleAdd = () => {
     if (!service || !category || !price || !duration) {
       Alert.alert('Eksik Bilgi', 'Zorunlu alanları doldurun'); return;
     }
     onAdd({
-      id: Date.now().toString(),
-      service, category, price: parseInt(price), duration: parseInt(duration), note, isAnonymous,
-      beforeEmoji: '😐', afterEmoji: '✨', beforePhoto: null, afterPhoto: null,
+      service,
+      category,
+      price: parseInt(price),
+      duration: parseInt(duration),
+      note,
+      isAnonymous,
+      beforePhoto,
+      afterPhoto,
+      beforeEmoji: '😐',
+      afterEmoji: '✨',
       date: new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
       likes: 0, comments: 0, views: 0, saves: 0,
       isLiked: false, isSaved: false, isHidden: false,
@@ -434,23 +358,40 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      <View style={addStyles.overlay}>
+      {/* ÇÖZÜM 2: Klavyenin kutuları kapatmasını engellemek için sarmaladık */}
+      <KeyboardAvoidingView
+        style={addStyles.overlay}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
         <Animated.View style={[addStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
 
           <View style={addStyles.dragHandle} />
-          <Text style={addStyles.title}>Yeni Çalışma Ekle</Text>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }}>
+          {/* ÇÖZÜM 1: Başlık alanını satır yaptık ve X butonu ekledik */}
+          <View style={addStyles.headerRow}>
+            <Text style={addStyles.title}>Yeni Çalışma Ekle</Text>
+            <TouchableOpacity onPress={onClose} style={addStyles.closeBtn}>
+              <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 50 }} keyboardShouldPersistTaps="handled">
 
             {/* Fotoğraf Seçimi */}
             <View style={addStyles.photosRow}>
-              <TouchableOpacity style={addStyles.photoCard}>
+              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('before')}>
                 <LinearGradient colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']} style={addStyles.photoCardInner}>
-                  <Ionicons name="image-outline" size={36} color={COLORS.textMuted} />
-                  <Text style={addStyles.photoCardLabel}>Öncesi</Text>
-                  <Text style={addStyles.photoCardHint}>Fotoğraf seç</Text>
+                  {beforePhoto ? (
+                    <Image source={{ uri: beforePhoto }} style={addStyles.selectedPreview} />
+                  ) : (
+                    <>
+                      <Ionicons name="image-outline" size={36} color={COLORS.textMuted} />
+                      <Text style={addStyles.photoCardLabel}>Öncesi</Text>
+                      <Text style={addStyles.photoCardHint}>Fotoğraf seç</Text>
+                    </>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
 
@@ -460,11 +401,17 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
                 </LinearGradient>
               </View>
 
-              <TouchableOpacity style={addStyles.photoCard}>
+              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('after')}>
                 <LinearGradient colors={[COLORS.primary + '22', COLORS.primary + '08']} style={[addStyles.photoCardInner, { borderColor: COLORS.primary + '44' }]}>
-                  <Ionicons name="sparkles-outline" size={36} color={COLORS.primary} />
-                  <Text style={[addStyles.photoCardLabel, { color: COLORS.primary }]}>Sonrası</Text>
-                  <Text style={addStyles.photoCardHint}>Fotoğraf seç</Text>
+                  {afterPhoto ? (
+                    <Image source={{ uri: afterPhoto }} style={addStyles.selectedPreview} />
+                  ) : (
+                    <>
+                      <Ionicons name="sparkles-outline" size={36} color={COLORS.primary} />
+                      <Text style={[addStyles.photoCardLabel, { color: COLORS.primary }]}>Sonrası</Text>
+                      <Text style={addStyles.photoCardHint}>Fotoğraf seç</Text>
+                    </>
+                  )}
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -545,19 +492,22 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
             </TouchableOpacity>
           </View>
         </Animated.View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const addStyles = StyleSheet.create({
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xl },
+  title: { fontSize: FONTS.xxlarge, fontWeight: '900', color: COLORS.white },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '92%', overflow: 'hidden', paddingHorizontal: SPACING.lg },
   dragHandle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginVertical: SPACING.md },
-  title: { fontSize: FONTS.xxlarge, fontWeight: '900', color: COLORS.white, marginBottom: SPACING.xl },
   photosRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
   photoCard: { flex: 1, aspectRatio: 1 },
-  photoCardInner: { flex: 1, borderRadius: RADIUS.xl, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.08)', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', gap: SPACING.xs },
+  photoCardInner: { flex: 1, borderRadius: RADIUS.xl, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.08)', borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center', gap: SPACING.xs, overflow: 'hidden' },
+  selectedPreview: { width: '100%', height: '100%', resizeMode: 'cover' },
   photoCardLabel: { fontSize: FONTS.regular, fontWeight: 'bold', color: COLORS.textSecondary },
   photoCardHint: { fontSize: FONTS.small, color: COLORS.textMuted },
   arrowContainer: { paddingHorizontal: SPACING.md },
@@ -606,15 +556,21 @@ function GridCard({ item, onPress, onLongPress }: {
     >
       <Animated.View style={[gridStyles.card, { transform: [{ scale: scaleAnim }] }]}>
 
-        {/* Split — sol önce, sağ sonra */}
+        {/* Split Box */}
         <View style={gridStyles.splitBox}>
-          <LinearGradient colors={['#1A1C29', '#12141F']} style={gridStyles.half}>
-            <Text style={gridStyles.emojiSmall}>{item.beforeEmoji}</Text>
-          </LinearGradient>
-          <LinearGradient colors={['#2A1F3D', '#1A0F2E']} style={gridStyles.half}>
-            <Text style={gridStyles.emojiLarge}>{item.afterEmoji}</Text>
-          </LinearGradient>
-          <View style={gridStyles.splitLine} />
+          {item.afterPhoto ? (
+            <Image source={{ uri: item.afterPhoto }} style={gridStyles.gridImage} />
+          ) : (
+            <>
+              <LinearGradient colors={['#1A1C29', '#12141F']} style={gridStyles.half}>
+                <Text style={gridStyles.emojiSmall}>{item.beforeEmoji}</Text>
+              </LinearGradient>
+              <LinearGradient colors={['#2A1F3D', '#1A0F2E']} style={gridStyles.half}>
+                <Text style={gridStyles.emojiLarge}>{item.afterEmoji}</Text>
+              </LinearGradient>
+              <View style={gridStyles.splitLine} />
+            </>
+          )}
 
           {/* Kategori nokta */}
           <View style={[gridStyles.catDot, { backgroundColor: catColor }]} />
@@ -652,15 +608,16 @@ function GridCard({ item, onPress, onLongPress }: {
 }
 
 const gridStyles = StyleSheet.create({
-  card: { 
-    width: GRID_ITEM_SIZE, 
-    backgroundColor: 'rgba(255,255,255,0.03)', 
+  card: {
+    width: GRID_ITEM_SIZE,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     overflow: 'hidden',
-    borderRadius: RADIUS.md, // Köşeleri hafif yuvarlatıyoruz
-    borderWidth: 1, // Sınır çizgisi eklendi
-    borderColor: 'rgba(255,255,255,0.15)', // Sınır rengini belirginleştirdik
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
   },
   splitBox: { width: '100%', aspectRatio: 1, flexDirection: 'row', position: 'relative' },
+  gridImage: { width: '100%', height: '100%', resizeMode: 'cover' },
   half: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   emojiSmall: { fontSize: 22, opacity: 0.5 },
   emojiLarge: { fontSize: 32 },
@@ -674,46 +631,108 @@ const gridStyles = StyleSheet.create({
   statsRow: { flexDirection: 'row', gap: SPACING.sm },
   stat: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   statText: { fontSize: 10, color: COLORS.textMuted },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: SPACING.xl },
+  title: { fontSize: FONTS.xxlarge, fontWeight: '900', color: COLORS.white },
+  closeBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
 });
 
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function HairdresserPortfolioScreen() {
+  const router = useRouter();
   const { user } = useAuthStore();
-  const [portfolio, setPortfolio] = useState(DUMMY_PORTFOLIO);
+
+  // Canlı Veri State'leri
+  const [profile, setProfile] = useState<any>(null);
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState<PortfolioItem | null>(null);
   const [showDetail, setShowDetail] = useState(false);
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  const headerAnim = useRef(new Animated.Value(0)).current;
   const contentAnim = useRef(new Animated.Value(20)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     Animated.parallel([
-      Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(opacityAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
       Animated.spring(contentAnim, { toValue: 0, tension: 40, friction: 8, useNativeDriver: true }),
     ]).start();
   }, []);
 
-  const pickAvatar = async () => {
-    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permission.granted) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) setAvatarUri(result.assets[0].uri);
+  // ── FIRESTORE GERÇEK ZAMANLI BAĞLANTI ──
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const unsubs: (() => void)[] = [];
+
+    // 1. Profil bilgilerini dinle
+    const profRef = doc(db, 'hairdresserProfiles', user.uid);
+    unsubs.push(onSnapshot(profRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setProfile(docSnap.data());
+      }
+    }));
+
+    // 2. Kuaförün portfolyo çalışmalarını dinle
+    const portQ = query(
+      collection(db, 'portfolio'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+    unsubs.push(onSnapshot(portQ, (snap) => {
+      setPortfolio(snap.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioItem)));
+      setLoading(false);
+    }));
+
+    return () => unsubs.forEach(u => u());
+  }, [user?.uid]);
+
+  // Yeni portfolyo dökümanı ekleme metodu
+  const handleAddPortfolioItem = async (newItem: any) => {
+    if (!user?.uid) return;
+    try {
+      await addDoc(collection(db, 'portfolio'), {
+        ...newItem,
+        hairdresserId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+    } catch (e) {
+      Alert.alert('Hata', 'Çalışma portfolyoya eklenemedi.');
+    }
   };
 
   const handleLongPress = (item: PortfolioItem) => {
     Alert.alert(item.service, 'Ne yapmak istiyorsunuz?', [
       { text: 'İptal', style: 'cancel' },
-      { text: item.isHidden ? 'Göster' : 'Gizle', onPress: () => setPortfolio(prev => prev.map(p => p.id === item.id ? { ...p, isHidden: !p.isHidden } : p)) },
-      { text: 'Sil', style: 'destructive', onPress: () => setPortfolio(prev => prev.filter(p => p.id !== item.id)) },
+      {
+        text: item.isHidden ? 'Göster' : 'Gizle',
+        onPress: async () => {
+          try {
+            await updateDoc(doc(db, 'portfolio', item.id), { isHidden: !item.isHidden });
+          } catch (e) { console.error(e); }
+        }
+      },
+      {
+        text: 'Sil',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteDoc(doc(db, 'portfolio', item.id));
+          } catch (e) { console.error(e); }
+        }
+      },
     ]);
   };
+
+  if (loading || !profile) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#140824', '#090514']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   const totalLikes = portfolio.reduce((a, b) => a + b.likes, 0);
   const totalViews = portfolio.reduce((a, b) => a + b.views, 0);
@@ -727,9 +746,8 @@ export default function HairdresserPortfolioScreen() {
         keyExtractor={(item) => item.id}
         numColumns={3}
         showsVerticalScrollIndicator={false}
-        // BOŞLUK STİLLERİ BURADA EKLENDİ
-        columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_GAP }} // Kartlar arası yatay boşluk ve kenar boşluğu
-        contentContainerStyle={{ gap: GRID_GAP, paddingBottom: 120 }} // Kartlar arası dikey boşluk
+        columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_GAP }}
+        contentContainerStyle={{ gap: GRID_GAP, paddingBottom: 120 }}
         ListHeaderComponent={
           <Animated.View style={{ opacity: opacityAnim, transform: [{ translateY: contentAnim }] }}>
 
@@ -739,9 +757,9 @@ export default function HairdresserPortfolioScreen() {
               {/* Avatar + İstatistikler */}
               <View style={styles.profileTop}>
                 {/* Avatar */}
-                <TouchableOpacity onPress={pickAvatar} style={styles.avatarWrapper}>
-                  {avatarUri ? (
-                    <Image source={{ uri: avatarUri }} style={styles.avatar} />
+                <TouchableOpacity onPress={() => router.push('/(hairdresser)/profile')} style={styles.avatarWrapper}>
+                  {profile.avatarUri ? (
+                    <Image source={{ uri: profile.avatarUri }} style={styles.avatar} />
                   ) : (
                     <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
                       <Text style={styles.avatarEmoji}>✂️</Text>
@@ -759,7 +777,7 @@ export default function HairdresserPortfolioScreen() {
                     <Text style={styles.statLabel}>Çalışma</Text>
                   </View>
                   <View style={styles.statItem}>
-                    <Text style={styles.statNumber}>{DUMMY_PROFILE.followers}</Text>
+                    <Text style={styles.statNumber}>{profile.followersCount ?? 0}</Text>
                     <Text style={styles.statLabel}>Takipçi</Text>
                   </View>
                   <View style={styles.statItem}>
@@ -776,23 +794,23 @@ export default function HairdresserPortfolioScreen() {
               {/* Salon adı & bio */}
               <View style={styles.profileInfo}>
                 <View style={styles.profileNameRow}>
-                  <Text style={styles.salonName}>{DUMMY_PROFILE.salonName}</Text>
+                  <Text style={styles.salonName}>{profile.salonName}</Text>
                   <View style={styles.ratingBadge}>
                     <Ionicons name="star" size={12} color="#FFB844" />
-                    <Text style={styles.ratingText}>{DUMMY_PROFILE.rating}</Text>
+                    <Text style={styles.ratingText}>{(profile.averageRating ?? 5.0).toFixed(1)}</Text>
                   </View>
                 </View>
-                <Text style={styles.ownerName}>{DUMMY_PROFILE.ownerName}</Text>
+                <Text style={styles.ownerName}>{profile.ownerName || 'Dükkan Sahibi'}</Text>
                 <View style={styles.locationRow}>
                   <Ionicons name="location-outline" size={13} color={COLORS.textMuted} />
-                  <Text style={styles.locationText}>{DUMMY_PROFILE.city}</Text>
+                  <Text style={styles.locationText}>{profile.district ? `${profile.district}, ${profile.city}` : profile.city}</Text>
                 </View>
-                <Text style={styles.bio}>{DUMMY_PROFILE.bio}</Text>
+                <Text style={styles.bio}>{profile.bio}</Text>
 
                 {/* Uzmanlık etiketleri */}
                 <View style={styles.specialtiesRow}>
-                  {DUMMY_PROFILE.specialties.map((s) => (
-                    <View key={s} style={styles.specialtyChip}>
+                  {(profile.specializations || []).map((s: string, idx: number) => (
+                    <View key={`${s}-${idx}`} style={styles.specialtyChip}>
                       <Text style={styles.specialtyText}>{s}</Text>
                     </View>
                   ))}
@@ -801,7 +819,7 @@ export default function HairdresserPortfolioScreen() {
 
               {/* Butonlar */}
               <View style={styles.actionButtons}>
-                <TouchableOpacity style={styles.editProfileBtn}>
+                <TouchableOpacity style={styles.editProfileBtn} onPress={() => router.push('/(hairdresser)/profile')}>
                   <Text style={styles.editProfileText}>Profili Düzenle</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.addPostBtn} onPress={() => setShowAddModal(true)}>
@@ -817,7 +835,7 @@ export default function HairdresserPortfolioScreen() {
             </View>
           </Animated.View>
         }
-        renderItem={({ item, index }) => (
+        renderItem={({ item }) => (
           <GridCard
             item={item}
             onPress={() => { setSelectedItem(item); setShowDetail(true); }}
@@ -841,7 +859,7 @@ export default function HairdresserPortfolioScreen() {
       <AddPortfolioModal
         visible={showAddModal}
         onClose={() => setShowAddModal(false)}
-        onAdd={(item) => setPortfolio([item, ...portfolio])}
+        onAdd={handleAddPortfolioItem}
       />
     </View>
   );
@@ -850,6 +868,7 @@ export default function HairdresserPortfolioScreen() {
 // ─── STİLLER ───────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#090514' },
+
 
   // Profil Header
   profileHeader: { paddingTop: 60, paddingHorizontal: SPACING.lg, paddingBottom: SPACING.md },

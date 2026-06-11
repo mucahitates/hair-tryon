@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR PROFİL EKRANI (app/(hairdresser)/profile.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/profile.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -18,6 +15,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,42 +24,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+// FIREBASE IMPORTS
+import { doc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+
 const { width } = Dimensions.get('window');
-
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_PROFILE = {
-  salonName: 'Salon Elegance',
-  city: 'İstanbul',
-  district: 'Kadıköy',
-  address: 'Moda Caddesi No:42, Kadıköy',
-  phone: '05321234567',
-  instagram: '@salonelegance',
-  bio: 'Profesyonel saç boyama ve kesim uzmanı. 8 yıllık deneyimle hizmet veriyoruz.',
-  totalJobs: 124,
-  averageRating: 4.8,
-  followersCount: 892,
-  completionRate: 96,
-  experience: 8,
-  memberSince: 'Ocak 2023',
-};
-
-const DUMMY_SERVICES = [
-  { id: '1', category: 'Kesim', name: 'Klasik Kesim', price: 200, duration: 45 },
-  { id: '2', category: 'Kesim', name: 'Özel Tasarım Kesim', price: 350, duration: 60 },
-  { id: '3', category: 'Renk', name: 'Tek Renk Boyama', price: 400, duration: 90 },
-  { id: '4', category: 'Renk', name: 'Balayage', price: 800, duration: 180 },
-  { id: '5', category: 'Bakım', name: 'Keratin Bakım', price: 600, duration: 120 },
-];
-
-const DUMMY_WORKING_HOURS: Record<string, { isOpen: boolean; open: string; close: string }> = {
-  'Pazartesi': { isOpen: true, open: '09:00', close: '19:00' },
-  'Salı': { isOpen: true, open: '09:00', close: '19:00' },
-  'Çarşamba': { isOpen: true, open: '09:00', close: '19:00' },
-  'Perşembe': { isOpen: true, open: '09:00', close: '19:00' },
-  'Cuma': { isOpen: true, open: '09:00', close: '20:00' },
-  'Cumartesi': { isOpen: true, open: '10:00', close: '18:00' },
-  'Pazar': { isOpen: false, open: '09:00', close: '18:00' },
-};
 
 const SPECIALIZATIONS = ['Renk', 'Kesim', 'Balayage', 'Ombre', 'Keratin', 'Fön', 'Uzatma', 'Perma'];
 
@@ -71,6 +38,17 @@ for (let h = 7; h <= 22; h++) {
   TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:00`);
   if (h < 22) TIME_OPTIONS.push(`${String(h).padStart(2, '0')}:30`);
 }
+
+// Varsayılan Çalışma Saatleri Şablonu (Veritabanında yoksa oluşması için)
+const DEFAULT_WORKING_HOURS = {
+  'Pazartesi': { isOpen: true, open: '09:00', close: '19:00' },
+  'Salı': { isOpen: true, open: '09:00', close: '19:00' },
+  'Çarşamba': { isOpen: true, open: '09:00', close: '19:00' },
+  'Perşembe': { isOpen: true, open: '09:00', close: '19:00' },
+  'Cuma': { isOpen: true, open: '09:00', close: '20:00' },
+  'Cumartesi': { isOpen: true, open: '10:00', close: '18:00' },
+  'Pazar': { isOpen: false, open: '09:00', close: '18:00' },
+};
 
 // ─── YARDIMCI BİLEŞENLER ──────────────────────────────────
 
@@ -135,8 +113,6 @@ const settingStyles = StyleSheet.create({
 });
 
 // ─── BOTTOM MODAL WRAPPER ──────────────────────────────────
-// showBack ve onBack propları eklendi
-// ─── BOTTOM MODAL WRAPPER ──────────────────────────────────
 function BottomModal({ visible, onClose, title, children, showSave, onSave, saveLabel, showBack, onBack }: {
   visible: boolean; onClose: () => void; title: string; children: React.ReactNode;
   showSave?: boolean; onSave?: () => void; saveLabel?: string;
@@ -151,11 +127,7 @@ function BottomModal({ visible, onClose, title, children, showSave, onSave, save
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      {/* View yerine KeyboardAvoidingView kullanıyoruz */}
-      <KeyboardAvoidingView
-        style={modalStyles.overlay}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={modalStyles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Animated.View style={[modalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <View style={modalStyles.header}>
             {showBack && onBack && (
@@ -169,10 +141,7 @@ function BottomModal({ visible, onClose, title, children, showSave, onSave, save
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            keyboardShouldPersistTaps="handled" // Klavye açıkken de butonlara basılabilmesini sağlar
-          >
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             {children}
             <View style={{ height: SPACING.xl }} />
           </ScrollView>
@@ -206,37 +175,26 @@ const modalStyles = StyleSheet.create({
 });
 
 // ─── SALON DÜZENLEME MODALI ────────────────────────────────
-function EditSalonModal({ visible, onClose, avatarUri, onAvatarChange }: {
-  visible: boolean; onClose: () => void;
-  avatarUri: string | null; onAvatarChange: (uri: string) => void;
+function EditSalonModal({ visible, onClose, profileData, onSave, onAvatarPick }: {
+  visible: boolean; onClose: () => void; profileData: any; onSave: (updated: any) => void; onAvatarPick: () => void;
 }) {
-  const [salonName, setSalonName] = useState(DUMMY_PROFILE.salonName);
-  const [phone, setPhone] = useState(DUMMY_PROFILE.phone);
-  const [address, setAddress] = useState(DUMMY_PROFILE.address);
-  const [instagram, setInstagram] = useState(DUMMY_PROFILE.instagram);
-  const [bio, setBio] = useState(DUMMY_PROFILE.bio);
+  const [salonName, setSalonName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const [instagram, setInstagram] = useState('');
+  const [bio, setBio] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
-  const handlePickPhoto = async () => {
-    try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-      if (!result.canceled && result.assets[0]) {
-        onAvatarChange(result.assets[0].uri);
-      }
-    } catch (error) {
-      Alert.alert('Hata', 'Fotoğraf seçilemedi.');
+  useEffect(() => {
+    if (visible && profileData) {
+      setSalonName(profileData.salonName || '');
+      setPhone(profileData.phone || '');
+      setAddress(profileData.address || '');
+      setInstagram(profileData.instagram || '');
+      setBio(profileData.bio || '');
+      setPhoneError('');
     }
-  };
+  }, [visible, profileData]);
 
   const handleSave = () => {
     if (phone && phone.replace(/\D/g, '').length !== 11) {
@@ -244,17 +202,16 @@ function EditSalonModal({ visible, onClose, avatarUri, onAvatarChange }: {
       return;
     }
     setPhoneError('');
+    onSave({ salonName, phone, address, instagram, bio });
     onClose();
   };
 
   return (
-    <BottomModal visible={visible} onClose={onClose} title="Salon Bilgilerini Düzenle"
-      showSave onSave={handleSave} saveLabel="Kaydet"
-    >
+    <BottomModal visible={visible} onClose={onClose} title="Salon Bilgilerini Düzenle" showSave onSave={handleSave} saveLabel="Kaydet">
       <View style={editStyles.content}>
-        <TouchableOpacity style={editStyles.avatarSection} onPress={handlePickPhoto}>
-          {avatarUri ? (
-            <Image source={{ uri: avatarUri }} style={editStyles.avatarImage} />
+        <TouchableOpacity style={editStyles.avatarSection} onPress={onAvatarPick}>
+          {profileData?.avatarUri ? (
+            <Image source={{ uri: profileData.avatarUri }} style={editStyles.avatarImage} />
           ) : (
             <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={editStyles.avatar}>
               <Text style={editStyles.avatarEmoji}>✂️</Text>
@@ -328,7 +285,7 @@ const editStyles = StyleSheet.create({
   errorText: { fontSize: FONTS.small, color: COLORS.error, marginTop: 2 },
 });
 
-// ─── HİZMET EKLE MODALI ────────────────────────────────────
+// ─── HIZMET EKLE MODALI ────────────────────────────────────
 function AddServiceModal({ visible, onClose, onAdd }: {
   visible: boolean; onClose: () => void; onAdd: (service: any) => void;
 }) {
@@ -395,33 +352,28 @@ const addStyles = StyleSheet.create({
 });
 
 // ─── ÇALIŞMA SAATLERİ MODALI ────────────────────────────────
-// İçi içe Modal mantığı kullanmadan koşullu render (conditional rendering) yapısı ile
 function WorkingHoursModal({ visible, onClose, hours, onSave }: {
-  visible: boolean; onClose: () => void;
-  hours: typeof DUMMY_WORKING_HOURS;
-  onSave: (hours: typeof DUMMY_WORKING_HOURS) => void;
+  visible: boolean; onClose: () => void; hours: any; onSave: (hours: any) => void;
 }) {
-  const [local, setLocal] = useState({ ...hours });
-
-  // İç modal geçişi için stateler
+  const [local, setLocal] = useState<any>({});
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pickerDay, setPickerDay] = useState('');
   const [pickerType, setPickerType] = useState<'open' | 'close'>('open');
 
   useEffect(() => {
-    setLocal({ ...hours });
-    setShowTimePicker(false); // Modal açıldığında daima ana listeye dön
+    if (hours) setLocal({ ...hours });
+    setShowTimePicker(false);
   }, [visible, hours]);
 
   const toggleDay = (day: string) => {
-    setLocal(prev => ({
+    setLocal((prev: any) => ({
       ...prev,
       [day]: { ...prev[day], isOpen: !prev[day].isOpen }
     }));
   };
 
   const handleTimeSelect = (time: string) => {
-    setLocal(prev => ({
+    setLocal((prev: any) => ({
       ...prev,
       [pickerDay]: { ...prev[pickerDay], [pickerType]: time }
     }));
@@ -444,7 +396,6 @@ function WorkingHoursModal({ visible, onClose, hours, onSave }: {
       saveLabel="Kaydet"
     >
       {showTimePicker ? (
-        // ── GÖRÜNÜM 2: SAAT SEÇİCİ ──
         <View style={timeStyles.list}>
           {TIME_OPTIONS.map((time) => {
             const isActive = local[pickerDay]?.[pickerType] === time;
@@ -454,18 +405,15 @@ function WorkingHoursModal({ visible, onClose, hours, onSave }: {
                 style={[timeStyles.timeItem, isActive && timeStyles.timeItemActive]}
                 onPress={() => handleTimeSelect(time)}
               >
-                <Text style={[timeStyles.timeText, isActive && timeStyles.timeTextActive]}>
-                  {time}
-                </Text>
+                <Text style={[timeStyles.timeText, isActive && timeStyles.timeTextActive]}>{time}</Text>
                 {isActive && <Ionicons name="checkmark" size={18} color={COLORS.primary} />}
               </TouchableOpacity>
             );
           })}
         </View>
       ) : (
-        // ── GÖRÜNÜM 1: GÜNLER VE SAATLER LİSTESİ ──
         <View style={{ paddingHorizontal: SPACING.lg }}>
-          {Object.entries(local).map(([day, info]) => (
+          {Object.entries(local).map(([day, info]: [string, any]) => (
             <View key={day} style={hoursStyles.dayRow}>
               <Switch
                 value={info.isOpen}
@@ -488,9 +436,7 @@ function WorkingHoursModal({ visible, onClose, hours, onSave }: {
                     <Ionicons name="time-outline" size={13} color={COLORS.primary} />
                     <Text style={hoursStyles.timeBtnText}>{info.open}</Text>
                   </TouchableOpacity>
-
                   <Text style={hoursStyles.timeDash}>—</Text>
-
                   <TouchableOpacity
                     style={hoursStyles.timeBtn}
                     onPress={() => {
@@ -533,6 +479,64 @@ const timeStyles = StyleSheet.create({
   timeItemActive: { backgroundColor: COLORS.primary + '18' },
   timeText: { fontSize: FONTS.large, color: COLORS.textPrimary, fontWeight: '500' },
   timeTextActive: { color: COLORS.primary, fontWeight: '700' },
+});
+
+// ─── GİZLİLİK AYARLARI MODALI ─────────────────────────────
+function PrivacyModal({ visible, onClose, privacySettings, onSave }: { visible: boolean; onClose: () => void; privacySettings: any; onSave: (updated: any) => void }) {
+  const [profileVisible, setProfileVisible] = useState(true);
+  const [showRating, setShowRating] = useState(true);
+  const [allowMessages, setAllowMessages] = useState(true);
+
+  useEffect(() => {
+    if (visible && privacySettings) {
+      setProfileVisible(privacySettings.isProfilePublic ?? true);
+      setShowRating(privacySettings.showRating ?? true);
+      setAllowMessages(privacySettings.allowMessages ?? true);
+    }
+  }, [visible, privacySettings]);
+
+  const handleSave = () => {
+    onSave({ isProfilePublic: profileVisible, showRating, allowMessages });
+    onClose();
+  };
+
+  return (
+    <BottomModal visible={visible} onClose={onClose} title="Gizlilik Ayarları" showSave onSave={handleSave} saveLabel="Kaydet">
+      <View style={privStyles.content}>
+        <Text style={privStyles.desc}>Profilinizin ve bilgilerinizin görünürlüğünü kontrol edin.</Text>
+        <View style={privStyles.card}>
+          {[
+            { label: 'Profilimi Herkese Göster', desc: 'Müşteriler profilinizi görebilir', value: profileVisible, onChange: setProfileVisible },
+            { label: 'Puanlarımı Göster', desc: 'Ortalama puanınız profilinde görünür', value: showRating, onChange: setShowRating },
+            { label: 'Mesaj Almaya İzin Ver', desc: 'Müşteriler size mesaj atabilir', value: allowMessages, onChange: setAllowMessages },
+          ].map((item, i, arr) => (
+            <View key={item.label}>
+              <View style={privStyles.row}>
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text style={privStyles.rowTitle}>{item.label}</Text>
+                  <Text style={privStyles.rowDesc}>{item.desc}</Text>
+                </View>
+                <Switch value={item.value} onValueChange={item.onChange}
+                  trackColor={{ false: COLORS.border, true: COLORS.primary + '88' }}
+                  thumbColor={item.value ? COLORS.primary : COLORS.textMuted} />
+              </View>
+              {i < arr.length - 1 && <View style={privStyles.divider} />}
+            </View>
+          ))}
+        </View>
+      </View>
+    </BottomModal>
+  );
+}
+
+const privStyles = StyleSheet.create({
+  content: { padding: SPACING.lg, gap: SPACING.md },
+  desc: { fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 20 },
+  card: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
+  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, gap: SPACING.md },
+  rowTitle: { fontSize: FONTS.regular, fontWeight: '600', color: COLORS.textPrimary },
+  rowDesc: { fontSize: FONTS.small, color: COLORS.textMuted },
+  divider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
 });
 
 // ─── ŞİFRE DEĞİŞTİR MODALI ────────────────────────────────
@@ -619,51 +623,6 @@ const pwStyles = StyleSheet.create({
   strengthBar: { flex: 1, height: 6, borderRadius: RADIUS.full },
 });
 
-// ─── GİZLİLİK AYARLARI MODALI ─────────────────────────────
-function PrivacyModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const [profileVisible, setProfileVisible] = useState(true);
-  const [showRating, setShowRating] = useState(true);
-  const [allowMessages, setAllowMessages] = useState(true);
-
-  return (
-    <BottomModal visible={visible} onClose={onClose} title="Gizlilik Ayarları" showSave onSave={onClose} saveLabel="Kaydet">
-      <View style={privStyles.content}>
-        <Text style={privStyles.desc}>Profilinizin ve bilgilerinizin görünürlüğünü kontrol edin.</Text>
-        <View style={privStyles.card}>
-          {[
-            { label: 'Profilimi Herkese Göster', desc: 'Müşteriler profilinizi görebilir', value: profileVisible, onChange: setProfileVisible },
-            { label: 'Puanlarımı Göster', desc: 'Ortalama puanınız profilinde görünür', value: showRating, onChange: setShowRating },
-            { label: 'Mesaj Almaya İzin Ver', desc: 'Müşteriler size mesaj atabilir', value: allowMessages, onChange: setAllowMessages },
-          ].map((item, i, arr) => (
-            <View key={item.label}>
-              <View style={privStyles.row}>
-                <View style={{ flex: 1, gap: 2 }}>
-                  <Text style={privStyles.rowTitle}>{item.label}</Text>
-                  <Text style={privStyles.rowDesc}>{item.desc}</Text>
-                </View>
-                <Switch value={item.value} onValueChange={item.onChange}
-                  trackColor={{ false: COLORS.border, true: COLORS.primary + '88' }}
-                  thumbColor={item.value ? COLORS.primary : COLORS.textMuted} />
-              </View>
-              {i < arr.length - 1 && <View style={privStyles.divider} />}
-            </View>
-          ))}
-        </View>
-      </View>
-    </BottomModal>
-  );
-}
-
-const privStyles = StyleSheet.create({
-  content: { padding: SPACING.lg, gap: SPACING.md },
-  desc: { fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 20 },
-  card: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
-  row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: SPACING.md, gap: SPACING.md },
-  rowTitle: { fontSize: FONTS.regular, fontWeight: '600', color: COLORS.textPrimary },
-  rowDesc: { fontSize: FONTS.small, color: COLORS.textMuted },
-  divider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
-});
-
 // ─── YARDIM MERKEZİ MODALI ─────────────────────────────────
 function HelpModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const faqs = [
@@ -715,7 +674,7 @@ function AboutModal({ visible, onClose }: { visible: boolean; onClose: () => voi
             </View>
           ))}
         </View>
-        <Text style={helpStyles.legal}>© 2025 Hair Tryon. Tüm hakları saklıdır.</Text>
+        <Text style={helpStyles.legal}>© 2026 Hair Tryon. Tüm hakları saklıdır.</Text>
       </View>
     </BottomModal>
   );
@@ -744,6 +703,7 @@ export default function HairdresserProfileScreen() {
   const router = useRouter();
   const { user, signOut } = useAuthStore();
 
+  // Modal Görünüm Kontrolleri
   const [showEditSalon, setShowEditSalon] = useState(false);
   const [showAddService, setShowAddService] = useState(false);
   const [showWorkingHours, setShowWorkingHours] = useState(false);
@@ -752,14 +712,9 @@ export default function HairdresserProfileScreen() {
   const [showHelp, setShowHelp] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
 
-  const [notifNewJob, setNotifNewJob] = useState(true);
-  const [notifMessage, setNotifMessage] = useState(true);
-  const [notifAppointment, setNotifAppointment] = useState(true);
-
-  const [avatarUri, setAvatarUri] = useState<string | null>(null);
-  const [services, setServices] = useState(DUMMY_SERVICES);
-  const [workingHours, setWorkingHours] = useState(DUMMY_WORKING_HOURS);
-  const [specs, setSpecs] = useState(['Renk', 'Kesim', 'Balayage', 'Ombre', 'Keratin']);
+  // Canlı Profil State
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
@@ -773,6 +728,41 @@ export default function HairdresserProfileScreen() {
     ]).start();
   }, []);
 
+  // ── FIRESTORE CANLI VERİ DİNLEYİCİSİ ──
+  useEffect(() => {
+    if (!user?.uid) return;
+
+    const profRef = doc(db, 'hairdresserProfiles', user.uid);
+    const unsub = onSnapshot(profRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setProfile(docSnap.data());
+      } else {
+        // Altyapı dokümanı yoksa boş yapıyı set et
+        setProfile({
+          salonName: 'Salon İsmi Belirtilmemiş',
+          bio: 'Açıklama belirtilmemiş.',
+          city: 'İstanbul',
+          district: 'Kadıköy',
+          address: '',
+          phone: '',
+          instagram: '',
+          totalJobs: 0,
+          averageRating: 5.0,
+          followersCount: 0,
+          completionRate: 100,
+          services: [],
+          specializations: [],
+          workingHours: DEFAULT_WORKING_HOURS,
+          notificationSettings: { newJob: true, message: true, appointment: true },
+          privacySettings: { isProfilePublic: true, showRating: true, allowMessages: true }
+        });
+      }
+      setLoading(false);
+    });
+
+    return () => unsub();
+  }, [user?.uid]);
+
   const handleSignOut = async () => {
     Alert.alert('Çıkış Yap', 'Hesabından çıkmak istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
@@ -780,26 +770,76 @@ export default function HairdresserProfileScreen() {
     ]);
   };
 
+  // ── PROFİL UPDATE METODLARI ──
+  const updateProfileField = async (fields: any) => {
+    if (!user?.uid) return;
+    try {
+      await updateDoc(doc(db, 'hairdresserProfiles', user.uid), fields);
+    } catch (e) {
+      Alert.alert('Hata', 'Bilgiler güncellenemedi.');
+    }
+  };
+
+  const handleAvatarPick = async () => {
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert('İzin Gerekli', 'Galeri erişimi için izin vermeniz gerekiyor.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets[0]) {
+        await updateProfileField({ avatarUri: result.assets[0].uri });
+      }
+    } catch (error) {
+      Alert.alert('Hata', 'Fotoğraf yüklenemedi.');
+    }
+  };
+
+  const handleAddService = async (newService: any) => {
+    const currentServices = profile?.services || [];
+    await updateProfileField({ services: [...currentServices, newService] });
+  };
+
   const handleDeleteService = (id: string) => {
     Alert.alert('Hizmeti Sil', 'Bu hizmeti silmek istediğine emin misin?', [
       { text: 'İptal', style: 'cancel' },
-      { text: 'Sil', style: 'destructive', onPress: () => setServices(prev => prev.filter(s => s.id !== id)) },
+      {
+        text: 'Sil', style: 'destructive', onPress: async () => {
+          const filtered = (profile?.services || []).filter((s: any) => s.id !== id);
+          await updateProfileField({ services: filtered });
+        }
+      },
     ]);
   };
 
-  const toggleSpec = (spec: string) => {
-    setSpecs(prev => prev.includes(spec) ? prev.filter(s => s !== spec) : [...prev, spec]);
+  const toggleSpec = async (spec: string) => {
+    const currentSpecs: string[] = profile?.specializations || [];
+    const updated = currentSpecs.includes(spec)
+      ? currentSpecs.filter(s => s !== spec)
+      : [...currentSpecs, spec];
+    await updateProfileField({ specializations: updated });
   };
 
-  const serviceCategories = Array.from(new Set(services.map(s => s.category)));
+  if (loading || !profile) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
+
+  const serviceCategories = Array.from(new Set((profile.services || []).map((s: any) => s.category)));
 
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#1A0533', '#0F0A1E', '#0D1B3E']}
-        start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }}
-        style={StyleSheet.absoluteFill}
-      />
+      <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
       <View style={styles.orb1} />
       <View style={styles.orb2} />
 
@@ -809,8 +849,8 @@ export default function HairdresserProfileScreen() {
         <Animated.View style={[styles.salonCard, { opacity: headerAnim }]}>
           <LinearGradient colors={[COLORS.primaryDark + '44', COLORS.primary + '22']} style={styles.salonCardGradient}>
             <TouchableOpacity style={styles.avatarWrapper} onPress={() => setShowEditSalon(true)}>
-              {avatarUri ? (
-                <Image source={{ uri: avatarUri }} style={styles.avatarImage} />
+              {profile.avatarUri ? (
+                <Image source={{ uri: profile.avatarUri }} style={styles.avatarImage} />
               ) : (
                 <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
                   <Text style={styles.avatarEmoji}>✂️</Text>
@@ -821,16 +861,16 @@ export default function HairdresserProfileScreen() {
               </View>
             </TouchableOpacity>
 
-            <Text style={styles.salonName}>{DUMMY_PROFILE.salonName}</Text>
-            <Text style={styles.salonBio}>{DUMMY_PROFILE.bio}</Text>
+            <Text style={styles.salonName}>{profile.salonName}</Text>
+            <Text style={styles.salonBio}>{profile.bio}</Text>
 
             <View style={styles.salonMeta}>
               {[
-                { icon: 'location-outline', text: `${DUMMY_PROFILE.district}, ${DUMMY_PROFILE.city}` },
-                { icon: 'call-outline', text: DUMMY_PROFILE.phone },
-                { icon: 'logo-instagram', text: DUMMY_PROFILE.instagram },
-              ].map((item) => (
-                <View key={item.text} style={styles.metaItem}>
+                { icon: 'location-outline', text: `${profile.district || 'Belirtilmemiş'}, ${profile.city || ''}` },
+                { icon: 'call-outline', text: profile.phone || 'Telefon eklenmemiş' },
+                { icon: 'logo-instagram', text: profile.instagram || 'Instagram eklenmemiş' },
+              ].map((item, index) => (
+                <View key={`${item.icon}-${index}`} style={styles.metaItem}>
                   <Ionicons name={item.icon as any} size={13} color={COLORS.textMuted} />
                   <Text style={styles.metaText}>{item.text}</Text>
                 </View>
@@ -849,13 +889,13 @@ export default function HairdresserProfileScreen() {
           {/* ── İSTATİSTİKLER ── */}
           <View style={styles.statsGrid}>
             {[
-              { label: 'Toplam İş', value: DUMMY_PROFILE.totalJobs, icon: 'briefcase-outline', color: COLORS.primary },
-              { label: 'Puan', value: DUMMY_PROFILE.averageRating, icon: 'star-outline', color: '#FFB844' },
-              { label: 'Takipçi', value: DUMMY_PROFILE.followersCount, icon: 'people-outline', color: '#34D399' },
-              { label: 'Tamamlama', value: `%${DUMMY_PROFILE.completionRate}`, icon: 'checkmark-circle-outline', color: '#A78BFA' },
+              { label: 'Toplam İş', value: profile.totalJobs ?? 0, icon: 'briefcase-outline', color: COLORS.primary },
+              { label: 'Puan', value: (profile.averageRating ?? 5.0).toFixed(1), icon: 'star-outline', color: '#FFB844' },
+              { label: 'Takipçi', value: profile.followersCount ?? 0, icon: 'people-outline', color: '#34D399' },
+              { label: 'Tamamlama', value: `%${profile.completionRate ?? 100}`, icon: 'checkmark-circle-outline', color: '#A78BFA' },
             ].map((stat) => (
               <View key={stat.label} style={styles.statCard}>
-                <LinearGradient colors={[stat.color + '22', stat.color + '11']} style={styles.statCardGradient}>
+                <LinearGradient colors={[stat.color + '22', stat.color + '11']} style={statCardGradientStyles.gradient}>
                   <Ionicons name={stat.icon as any} size={22} color={stat.color} />
                   <Text style={[styles.statValue, { color: stat.color }]}>{stat.value}</Text>
                   <Text style={styles.statLabel}>{stat.label}</Text>
@@ -866,29 +906,28 @@ export default function HairdresserProfileScreen() {
 
           {/* ── HİZMETLER ── */}
           <View style={styles.section}>
-            <SectionTitle title="Hizmetlerim" icon="cut-outline" action="+ Ekle" onAction={() => setShowAddService(true)} />
+            <View style={{ marginBottom: SPACING.md }}>
+              <SectionTitle title="Hizmetlerim" icon="cut-outline" action="+ Ekle" onAction={() => setShowAddService(true)} />
+            </View>
 
-            {services.length === 0 ? (
+            {(profile.services || []).length === 0 ? (
               <TouchableOpacity style={styles.emptyServices} onPress={() => setShowAddService(true)}>
                 <Ionicons name="add-circle-outline" size={32} color={COLORS.primary} />
                 <Text style={styles.emptyServicesText}>Henüz hizmet eklenmedi</Text>
                 <Text style={styles.emptyServicesHint}>+ Ekle butonuna basarak hizmet ekleyebilirsiniz</Text>
               </TouchableOpacity>
             ) : (
-              serviceCategories.map((cat) => (
-                <View key={cat} style={styles.serviceCategoryGroup}>
+              serviceCategories.map((cat: any, index: number) => (
+                <View key={`${cat || 'cat'}-${index}`} style={styles.serviceCategoryGroup}>
                   <View style={styles.categoryHeader}>
                     <View style={styles.categoryDot} />
                     <Text style={styles.serviceCategoryTitle}>{cat}</Text>
                     <View style={styles.categoryLine} />
                   </View>
 
-                  {services.filter(s => s.category === cat).map((service) => (
-                    <View key={service.id} style={styles.serviceCard}>
-                      <LinearGradient
-                        colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
-                        style={styles.serviceCardGradient}
-                      >
+                  {(profile.services || []).filter((s: any) => s.category === cat).map((service: any, index: number) => (
+                    <View key={service.id || `service-${index}`} style={styles.serviceCard}>
+                      <LinearGradient colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']} style={styles.serviceCardGradient}>
                         <View style={styles.serviceLeft}>
                           <View style={styles.serviceIconWrapper}>
                             <Ionicons name="cut-outline" size={18} color={COLORS.primary} />
@@ -921,16 +960,15 @@ export default function HairdresserProfileScreen() {
           <View style={styles.section}>
             <SectionTitle title="Uzmanlık Alanlarım" icon="sparkles-outline" />
             <View style={styles.specGrid}>
-              {SPECIALIZATIONS.map((spec) => (
-                <TouchableOpacity
-                  key={spec}
-                  style={[styles.specChip, specs.includes(spec) && styles.specChipActive]}
-                  onPress={() => toggleSpec(spec)}
-                >
-                  {specs.includes(spec) && <Ionicons name="checkmark" size={12} color={COLORS.primary} />}
-                  <Text style={[styles.specText, specs.includes(spec) && styles.specTextActive]}>{spec}</Text>
-                </TouchableOpacity>
-              ))}
+              {SPECIALIZATIONS.map((spec) => {
+                const isActive = (profile.specializations || []).includes(spec);
+                return (
+                  <TouchableOpacity key={spec} style={[styles.specChip, isActive && styles.specChipActive]} onPress={() => toggleSpec(spec)}>
+                    {isActive && <Ionicons name="checkmark" size={12} color={COLORS.primary} />}
+                    <Text style={[styles.specText, isActive && styles.specTextActive]}>{spec}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
 
@@ -938,7 +976,7 @@ export default function HairdresserProfileScreen() {
           <View style={styles.section}>
             <SectionTitle title="Çalışma Saatleri" icon="time-outline" action="Düzenle" onAction={() => setShowWorkingHours(true)} />
             <View style={styles.hoursCard}>
-              {Object.entries(workingHours).map(([day, info]) => (
+              {Object.entries(profile.workingHours || DEFAULT_WORKING_HOURS).map(([day, info]: [string, any]) => (
                 <View key={day} style={styles.hoursRow}>
                   <Text style={styles.hoursDay}>{day}</Text>
                   <Text style={[styles.hoursTime, !info.isOpen && { color: COLORS.error }]}>
@@ -953,9 +991,9 @@ export default function HairdresserProfileScreen() {
           <View style={styles.section}>
             <SectionTitle title="Bildirimler" icon="notifications-outline" />
             <View style={styles.settingsCard}>
-              <SettingRow icon="briefcase-outline" label="Yeni İş İlanı" isSwitch switchValue={notifNewJob} onSwitch={setNotifNewJob} showArrow={false} />
-              <SettingRow icon="chatbubble-outline" label="Yeni Mesaj" isSwitch switchValue={notifMessage} onSwitch={setNotifMessage} showArrow={false} />
-              <SettingRow icon="calendar-outline" label="Randevu Hatırlatma" isSwitch switchValue={notifAppointment} onSwitch={setNotifAppointment} showArrow={false} />
+              <SettingRow icon="briefcase-outline" label="Yeni İş İlanı" isSwitch switchValue={profile.notificationSettings?.newJob ?? true} onSwitch={(val) => updateProfileField({ 'notificationSettings.newJob': val })} showArrow={false} />
+              <SettingRow icon="chatbubble-outline" label="Yeni Mesaj" isSwitch switchValue={profile.notificationSettings?.message ?? true} onSwitch={(val) => updateProfileField({ 'notificationSettings.message': val })} showArrow={false} />
+              <SettingRow icon="calendar-outline" label="Randevu Hatırlatma" isSwitch switchValue={profile.notificationSettings?.appointment ?? true} onSwitch={(val) => updateProfileField({ 'notificationSettings.appointment': val })} showArrow={false} />
             </View>
           </View>
 
@@ -981,33 +1019,43 @@ export default function HairdresserProfileScreen() {
         </Animated.View>
       </ScrollView>
 
-      {/* ── MODALLAR ── */}
+      {/* ── MODALLAR (CANLI VERİ BAĞLANTILARI) ── */}
       <EditSalonModal
         visible={showEditSalon}
         onClose={() => setShowEditSalon(false)}
-        avatarUri={avatarUri}
-        onAvatarChange={setAvatarUri}
+        profileData={profile}
+        onSave={(updated) => updateProfileField(updated)}
+        onAvatarPick={handleAvatarPick}
       />
       <AddServiceModal
         visible={showAddService}
         onClose={() => setShowAddService(false)}
-        onAdd={(service) => setServices(prev => [...prev, service])}
+        onAdd={handleAddService}
       />
       <WorkingHoursModal
         visible={showWorkingHours}
         onClose={() => setShowWorkingHours(false)}
-        hours={workingHours}
-        onSave={setWorkingHours}
+        hours={profile.workingHours || DEFAULT_WORKING_HOURS}
+        onSave={(hours) => updateProfileField({ workingHours: hours })}
       />
       <ChangePasswordModal visible={showChangePassword} onClose={() => setShowChangePassword(false)} />
-      <PrivacyModal visible={showPrivacy} onClose={() => setShowPrivacy(false)} />
+      <PrivacyModal
+        visible={showPrivacy}
+        onClose={() => setShowPrivacy(false)}
+        privacySettings={profile.privacySettings}
+        onSave={(updated) => updateProfileField({ privacySettings: updated })}
+      />
       <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
       <AboutModal visible={showAbout} onClose={() => setShowAbout(false)} />
     </View>
   );
 }
 
-// ─── STİLLER ───────────────────────────────────────────────
+// ─── EKSTRA STİL HESAPLAMALARI ──────────────────────────────
+const statCardGradientStyles = StyleSheet.create({
+  gradient: { padding: SPACING.sm, alignItems: 'center', gap: 4, minHeight: 80, justifyContent: 'center' },
+});
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   orb1: { position: 'absolute', width: 300, height: 300, borderRadius: 150, backgroundColor: '#7C3AED', opacity: 0.15, top: -100, right: -80 },
@@ -1029,7 +1077,6 @@ const styles = StyleSheet.create({
   editBtnText: { fontSize: FONTS.small, color: COLORS.primary, fontWeight: '700' },
   statsGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.lg, gap: SPACING.sm, marginBottom: SPACING.xl },
   statCard: { width: (width - SPACING.lg * 2 - SPACING.sm * 3) / 4, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  statCardGradient: { padding: SPACING.sm, alignItems: 'center', gap: 4, minHeight: 80, justifyContent: 'center' },
   statValue: { fontSize: FONTS.medium, fontWeight: 'bold' },
   statLabel: { fontSize: 9, color: COLORS.textMuted, textAlign: 'center' },
   section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },

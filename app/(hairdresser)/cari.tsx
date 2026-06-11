@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// CARİ DÖKÜM SAYFASI (app/(hairdresser)/cari.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/cari.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
     View,
@@ -14,11 +11,19 @@ import {
     Alert,
     Modal,
     TextInput,
+    ActivityIndicator,
+    KeyboardAvoidingView,
+    Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+
+// FIREBASE IMPORTS
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
+import { useAuthStore } from '../../src/stores/authStore';
 
 const { width, height } = Dimensions.get('window');
 
@@ -29,52 +34,18 @@ interface Expense {
     amount: number;
     date: string;
     note: string;
+    createdAt?: any;
 }
 
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_INCOME_TRANSACTIONS = [
-    { id: 't1', date: '12 Haz 2025', customer: 'Ayşe Kaya', service: 'Balayage', amount: 750, category: 'Hizmet' },
-    { id: 't2', date: '11 Haz 2025', customer: 'Fatma Şahin', service: 'Keratin Bakım', amount: 580, category: 'Hizmet' },
-    { id: 't3', date: '10 Haz 2025', customer: 'Zeynep Mart', service: 'Wolf Cut', amount: 350, category: 'Hizmet' },
-    { id: 't4', date: '9 Haz 2025', customer: 'Merve Yıldız', service: 'Ombre', amount: 700, category: 'Hizmet' },
-    { id: 't5', date: '8 Haz 2025', customer: 'Selin Arslan', service: 'Saç Boyama', amount: 400, category: 'Hizmet' },
-    { id: 't6', date: '7 Haz 2025', customer: 'Elif Demir', service: 'Balayage', amount: 750, category: 'Hizmet' },
-    { id: 't7', date: '6 Haz 2025', customer: 'Hande Koç', service: 'Keratin', amount: 600, category: 'Hizmet' },
-    { id: 't8', date: '5 Haz 2025', customer: 'Büşra Aktaş', service: 'Kesim', amount: 200, category: 'Hizmet' },
-    { id: 't9', date: '4 Haz 2025', customer: 'Nilay Yurt', service: 'Perma', amount: 450, category: 'Hizmet' },
-    { id: 't10', date: '3 Haz 2025', customer: 'Ceyda Öz', service: 'Ombre', amount: 700, category: 'Hizmet' },
-];
-
-const INITIAL_EXPENSES: Expense[] = [
-    { id: 'e1', category: 'Kira', amount: 3500, date: '1 Haz 2025', note: 'Salon kirası' },
-    { id: 'e2', category: 'Personel', amount: 4500, date: '1 Haz 2025', note: 'Asistan maaşı' },
-    { id: 'e3', category: 'Malzeme', amount: 730, date: '11 Haz 2025', note: 'Boya & kimyasal' },
-    { id: 'e4', category: 'Fatura', amount: 320, date: '10 Haz 2025', note: 'Elektrik & su' },
-];
-
-const DUMMY_MONTHLY = [
-    { month: 'Oca', income: 5200, expense: 1800 },
-    { month: 'Şub', income: 6100, expense: 2100 },
-    { month: 'Mar', income: 7800, expense: 2300 },
-    { month: 'Nis', income: 8200, expense: 2000 },
-    { month: 'May', income: 12825, expense: 2800 },
-    { month: 'Haz', income: 8625, expense: 1300 },
-];
-
-const DUMMY_TOP_SERVICES = [
-    { service: 'Balayage', count: 28, earning: 21000, color: '#A78BFA' },
-    { service: 'Keratin', count: 22, earning: 13200, color: '#34D399' },
-    { service: 'Ombre', count: 18, earning: 12600, color: '#60A5FA' },
-    { service: 'Saç Boyama', count: 31, earning: 12400, color: '#F472B6' },
-    { service: 'Kesim', count: 25, earning: 5000, color: '#FFB844' },
-];
-
-const DUMMY_TOP_CUSTOMERS = [
-    { name: 'Ayşe Kaya', emoji: '👩', visits: 8, totalSpent: 4800 },
-    { name: 'Fatma Şahin', emoji: '👩‍🦱', visits: 6, totalSpent: 3480 },
-    { name: 'Zeynep Mart', emoji: '👩‍🦰', visits: 5, totalSpent: 2750 },
-    { name: 'Merve Yıldız', emoji: '👱‍♀️', visits: 4, totalSpent: 2800 },
-];
+interface AppointmentIncome {
+    id: string;
+    customerName: string;
+    customerEmoji: string;
+    service: string;
+    price: number;
+    date: string;
+    status: string;
+}
 
 const EXPENSE_CATEGORIES = [
     { key: 'Kira', icon: 'home-outline', color: '#F87171' },
@@ -83,6 +54,20 @@ const EXPENSE_CATEGORIES = [
     { key: 'Fatura', icon: 'flash-outline', color: '#60A5FA' },
     { key: 'Diğer', icon: 'ellipsis-horizontal-outline', color: '#A78BFA' },
 ];
+
+const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
+const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+
+// YYYY-MM-DD formatını "12 Haz 2025" formatına çeviren yardımcı
+const formatDisplayDate = (dateStr: string) => {
+    if (!dateStr) return '';
+    const parts = dateStr.split('-');
+    if (parts.length !== 3) return dateStr;
+    const day = parseInt(parts[2], 10);
+    const month = TR_MONTHS_SHORT[parseInt(parts[1], 10) - 1];
+    const year = parts[0];
+    return `${day} ${month} ${year}`;
+};
 
 // ─── BÖLÜM BAŞLIĞI ─────────────────────────────────────────
 function SectionTitle({ title, icon }: { title: string; icon: string }) {
@@ -100,15 +85,15 @@ const sectionStyles = StyleSheet.create({
 });
 
 // ─── GİDER EKLE MODALI ─────────────────────────────────────
+// ─── GİDER EKLE MODALI ─────────────────────────────────────
 function AddExpenseModal({ visible, onClose, onAdd }: {
     visible: boolean;
     onClose: () => void;
-    onAdd: (expense: Expense) => void;
+    onAdd: (expense: Omit<Expense, 'id'>) => void;
 }) {
     const [category, setCategory] = useState('Kira');
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
-    const [date, setDate] = useState('');
     const slideAnim = useRef(new Animated.Value(height)).current;
 
     useEffect(() => {
@@ -116,7 +101,7 @@ function AddExpenseModal({ visible, onClose, onAdd }: {
             Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
         } else {
             Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start();
-            setCategory('Kira'); setAmount(''); setNote(''); setDate('');
+            setCategory('Kira'); setAmount(''); setNote('');
         }
     }, [visible]);
 
@@ -125,11 +110,13 @@ function AddExpenseModal({ visible, onClose, onAdd }: {
             Alert.alert('Hata', 'Geçerli bir tutar girin');
             return;
         }
+
+        const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
         onAdd({
-            id: Date.now().toString(),
             category,
             amount: parseInt(amount),
-            date: date || new Date().toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }),
+            date: todayStr,
             note,
         });
         onClose();
@@ -139,120 +126,109 @@ function AddExpenseModal({ visible, onClose, onAdd }: {
 
     return (
         <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-            <View style={expenseModalStyles.overlay}>
-                <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-                <Animated.View style={[expenseModalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
-                    <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+            >
+                <View style={expenseModalStyles.overlay}>
+                    <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+                    <Animated.View style={[expenseModalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
+                        <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
 
-                    <View style={expenseModalStyles.handle} />
+                        <View style={expenseModalStyles.handle} />
 
-                    <View style={expenseModalStyles.header}>
-                        <Text style={expenseModalStyles.title}>Gider Ekle</Text>
-                        <TouchableOpacity onPress={onClose} style={expenseModalStyles.closeBtn}>
-                            <Ionicons name="close" size={22} color={COLORS.textPrimary} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <ScrollView
-                        showsVerticalScrollIndicator={false}
-                        contentContainerStyle={expenseModalStyles.scrollContent}
-                        keyboardShouldPersistTaps="handled"
-                    >
-                        {/* Kategori seç */}
-                        <View style={expenseModalStyles.field}>
-                            <Text style={expenseModalStyles.label}>Kategori *</Text>
-                            <View style={expenseModalStyles.categoryGrid}>
-                                {EXPENSE_CATEGORIES.map((cat) => (
-                                    <TouchableOpacity
-                                        key={cat.key}
-                                        style={[
-                                            expenseModalStyles.categoryCard,
-                                            category === cat.key && { borderColor: cat.color, backgroundColor: cat.color + '18' },
-                                        ]}
-                                        onPress={() => setCategory(cat.key)}
-                                    >
-                                        <View style={[expenseModalStyles.categoryIcon, { backgroundColor: cat.color + '22' }]}>
-                                            <Ionicons name={cat.icon as any} size={20} color={cat.color} />
-                                        </View>
-                                        <Text style={[
-                                            expenseModalStyles.categoryLabel,
-                                            category === cat.key && { color: cat.color, fontWeight: '700' },
-                                        ]}>
-                                            {cat.key}
-                                        </Text>
-                                        {category === cat.key && (
-                                            <Ionicons name="checkmark-circle" size={16} color={cat.color} style={{ position: 'absolute', top: 6, right: 6 }} />
-                                        )}
-                                    </TouchableOpacity>
-                                ))}
-                            </View>
+                        <View style={expenseModalStyles.header}>
+                            <Text style={expenseModalStyles.title}>Gider Ekle</Text>
+                            <TouchableOpacity onPress={onClose} style={expenseModalStyles.closeBtn}>
+                                <Ionicons name="close" size={22} color={COLORS.textPrimary} />
+                            </TouchableOpacity>
                         </View>
 
-                        {/* Tutar */}
-                        <View style={expenseModalStyles.field}>
-                            <Text style={expenseModalStyles.label}>Tutar (₺) *</Text>
-                            <View style={expenseModalStyles.amountWrapper}>
-                                <Text style={[expenseModalStyles.amountSymbol, { color: selectedCat.color }]}>₺</Text>
+                        <ScrollView
+                            showsVerticalScrollIndicator={false}
+                            contentContainerStyle={expenseModalStyles.scrollContent}
+                            keyboardShouldPersistTaps="handled"
+                        >
+                            <View style={expenseModalStyles.field}>
+                                <Text style={expenseModalStyles.label}>Kategori *</Text>
+                                <View style={expenseModalStyles.categoryGrid}>
+                                    {EXPENSE_CATEGORIES.map((cat) => (
+                                        <TouchableOpacity
+                                            key={cat.key}
+                                            style={[
+                                                expenseModalStyles.categoryCard,
+                                                category === cat.key && { borderColor: cat.color, backgroundColor: cat.color + '18' },
+                                            ]}
+                                            onPress={() => setCategory(cat.key)}
+                                        >
+                                            <View style={[expenseModalStyles.categoryIcon, { backgroundColor: cat.color + '22' }]}>
+                                                <Ionicons name={cat.icon as any} size={20} color={cat.color} />
+                                            </View>
+                                            <Text style={[
+                                                expenseModalStyles.categoryLabel,
+                                                category === cat.key && { color: cat.color, fontWeight: '700' },
+                                            ]}>
+                                                {cat.key}
+                                            </Text>
+                                            {category === cat.key && (
+                                                <Ionicons name="checkmark-circle" size={16} color={cat.color} style={{ position: 'absolute', top: 6, right: 6 }} />
+                                            )}
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </View>
+
+                            <View style={expenseModalStyles.field}>
+                                <Text style={expenseModalStyles.label}>Tutar (₺) *</Text>
+                                <View style={expenseModalStyles.amountWrapper}>
+                                    <Text style={[expenseModalStyles.amountSymbol, { color: selectedCat.color }]}>₺</Text>
+                                    <TextInput
+                                        style={[expenseModalStyles.amountInput, { color: selectedCat.color }]}
+                                        value={amount}
+                                        onChangeText={(t) => setAmount(t.replace(/\D/g, ''))}
+                                        placeholder="0"
+                                        placeholderTextColor={COLORS.textMuted}
+                                        keyboardType="numeric"
+                                    />
+                                </View>
+                            </View>
+
+                            <View style={expenseModalStyles.field}>
+                                <Text style={expenseModalStyles.label}>Not (opsiyonel)</Text>
                                 <TextInput
-                                    style={[expenseModalStyles.amountInput, { color: selectedCat.color }]}
-                                    value={amount}
-                                    onChangeText={(t) => setAmount(t.replace(/\D/g, ''))}
-                                    placeholder="0"
+                                    style={[expenseModalStyles.input, { minHeight: 70, textAlignVertical: 'top' }]}
+                                    value={note}
+                                    onChangeText={setNote}
+                                    placeholder="Gider hakkında not..."
                                     placeholderTextColor={COLORS.textMuted}
-                                    keyboardType="numeric"
-                                    autoFocus
+                                    multiline
+                                    maxLength={100}
                                 />
                             </View>
-                        </View>
+                        </ScrollView>
 
-                        {/* Tarih */}
-                        <View style={expenseModalStyles.field}>
-                            <Text style={expenseModalStyles.label}>Tarih (opsiyonel)</Text>
-                            <TextInput
-                                style={expenseModalStyles.input}
-                                value={date}
-                                onChangeText={setDate}
-                                placeholder="Örn: 1 Haz 2025"
-                                placeholderTextColor={COLORS.textMuted}
-                            />
+                        <View style={expenseModalStyles.footer}>
+                            <TouchableOpacity onPress={handleAdd}>
+                                <LinearGradient
+                                    colors={['#F87171', '#EF4444']}
+                                    start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                                    style={expenseModalStyles.addBtn}
+                                >
+                                    <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
+                                    <Text style={expenseModalStyles.addBtnText}>Gider Ekle</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
                         </View>
-
-                        {/* Not */}
-                        <View style={expenseModalStyles.field}>
-                            <Text style={expenseModalStyles.label}>Not (opsiyonel)</Text>
-                            <TextInput
-                                style={[expenseModalStyles.input, { minHeight: 70, textAlignVertical: 'top' }]}
-                                value={note}
-                                onChangeText={setNote}
-                                placeholder="Gider hakkında not..."
-                                placeholderTextColor={COLORS.textMuted}
-                                multiline
-                                maxLength={100}
-                            />
-                        </View>
-                    </ScrollView>
-
-                    <View style={expenseModalStyles.footer}>
-                        <TouchableOpacity onPress={handleAdd}>
-                            <LinearGradient
-                                colors={['#F87171', '#EF4444']}
-                                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                                style={expenseModalStyles.addBtn}
-                            >
-                                <Ionicons name="add-circle-outline" size={20} color={COLORS.white} />
-                                <Text style={expenseModalStyles.addBtnText}>Gider Ekle</Text>
-                            </LinearGradient>
-                        </TouchableOpacity>
-                    </View>
-                </Animated.View>
-            </View>
+                    </Animated.View>
+                </View>
+            </KeyboardAvoidingView>
         </Modal>
     );
 }
 
 const expenseModalStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-    container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '88%', overflow: 'hidden' },
+    container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.88, overflow: 'hidden' }, // Absolute kodu kaldırıldı, flex-end'e uyumlu hale getirildi
     handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, paddingTop: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     title: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary },
@@ -273,10 +249,16 @@ const expenseModalStyles = StyleSheet.create({
     addBtnText: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.white },
 });
 
+
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function CariScreen() {
     const router = useRouter();
-    const [expenses, setExpenses] = useState<Expense[]>(INITIAL_EXPENSES);
+    const { user } = useAuthStore();
+
+    const [appointments, setAppointments] = useState<AppointmentIncome[]>([]);
+    const [expenses, setExpenses] = useState<Expense[]>([]);
+    const [loading, setLoading] = useState(true);
+
     const [activeFilter, setActiveFilter] = useState<'all' | 'income' | 'expense'>('all');
     const [activePeriod, setActivePeriod] = useState<'month' | 'year'>('month');
     const [showAddExpense, setShowAddExpense] = useState(false);
@@ -285,51 +267,194 @@ export default function CariScreen() {
     const contentOpacity = useRef(new Animated.Value(0)).current;
     const contentAnim = useRef(new Animated.Value(20)).current;
 
+    // ─── FIRESTORE VERİ DİNLEME ───
     useEffect(() => {
+        if (!user?.uid) return;
+
+        const unsubs: (() => void)[] = [];
+
+        // 1. Gelirler (Onaylanmış veya Tamamlanmış Randevular)
+        const aptQ = query(
+            collection(db, 'appointments'),
+            where('hairdresserId', '==', user.uid)
+        );
+        unsubs.push(onSnapshot(aptQ, (snap) => {
+            const data = snap.docs
+                .map(doc => ({ id: doc.id, ...doc.data() } as any))
+                .filter(a => a.status === 'confirmed' || a.status === 'completed') // Sadece geçerli işler gelire yansır
+                .map(a => ({
+                    id: a.id,
+                    customerName: a.customerName || 'Müşteri',
+                    customerEmoji: a.customerEmoji || '👤',
+                    service: a.service || 'Hizmet',
+                    price: Number(a.price) || 0,
+                    date: a.date, // "YYYY-MM-DD"
+                    status: a.status
+                }));
+            setAppointments(data);
+        }));
+
+        // 2. Giderler
+        const expQ = query(
+            collection(db, 'expenses'),
+            where('hairdresserId', '==', user.uid)
+        );
+        unsubs.push(onSnapshot(expQ, (snap) => {
+            const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
+            setExpenses(data);
+            setLoading(false);
+        }));
+
         Animated.parallel([
             Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
             Animated.timing(contentOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
             Animated.spring(contentAnim, { toValue: 0, tension: 40, friction: 8, useNativeDriver: true }),
         ]).start();
-    }, []);
 
-    // Hesaplamalar
-    const totalIncome = DUMMY_INCOME_TRANSACTIONS.reduce((acc, t) => acc + t.amount, 0);
-    const totalExpense = expenses.reduce((acc, e) => acc + e.amount, 0);
+        return () => unsubs.forEach(u => u());
+    }, [user?.uid]);
+
+    // ─── YENİ GİDER EKLEME ───
+    const handleAddExpenseToDb = async (expenseData: Omit<Expense, 'id'>) => {
+        if (!user?.uid) return;
+        try {
+            await addDoc(collection(db, 'expenses'), {
+                ...expenseData,
+                hairdresserId: user.uid,
+                createdAt: serverTimestamp()
+            });
+        } catch (e) {
+            Alert.alert('Hata', 'Gider eklenemedi.');
+        }
+    };
+
+    // ─── DİNAMİK HESAPLAMALAR ───
+    const today = new Date();
+    const currentMonthNum = today.getMonth() + 1;
+    const currentYearStr = today.getFullYear().toString();
+    const currentMonthStr = currentMonthNum < 10 ? `0${currentMonthNum}` : `${currentMonthNum}`;
+    const currentMonthPrefix = `${currentYearStr}-${currentMonthStr}`; // "2026-06"
+
+    const lastMonthDate = new Date();
+    lastMonthDate.setMonth(today.getMonth() - 1);
+    const lastMonthNum = lastMonthDate.getMonth() + 1;
+    const lastYearStr = lastMonthDate.getFullYear().toString();
+    const lastMonthStr = lastMonthNum < 10 ? `0${lastMonthNum}` : `${lastMonthNum}`;
+    const lastMonthPrefix = `${lastYearStr}-${lastMonthStr}`;
+
+    // Aktif periyoda göre verileri filtreleme
+    const filteredApts = appointments.filter(a => {
+        if (!a.date) return false;
+        if (activePeriod === 'month') return a.date.startsWith(currentMonthPrefix);
+        return a.date.startsWith(currentYearStr);
+    });
+
+    const filteredExps = expenses.filter(e => {
+        if (!e.date) return false;
+        if (activePeriod === 'month') return e.date.startsWith(currentMonthPrefix);
+        return e.date.startsWith(currentYearStr);
+    });
+
+    const totalIncome = filteredApts.reduce((acc, t) => acc + t.price, 0);
+    const totalExpense = filteredExps.reduce((acc, e) => acc + e.amount, 0);
     const netProfit = totalIncome - totalExpense;
-    const thisMonthIncome = 8625;
-    const lastMonthIncome = 7200;
-    const growthRate = (((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100).toFixed(1);
-    const isGrowthPositive = thisMonthIncome > lastMonthIncome;
 
-    const avgPerJob = Math.round(totalIncome / DUMMY_INCOME_TRANSACTIONS.length);
+    // Geçen ay hesaplaması (Sadece 'month' seçiliyken büyüme oranı göstermek için)
+    const thisMonthIncome = appointments.filter(a => a.date?.startsWith(currentMonthPrefix)).reduce((acc, a) => acc + a.price, 0);
+    const lastMonthIncome = appointments.filter(a => a.date?.startsWith(lastMonthPrefix)).reduce((acc, a) => acc + a.price, 0);
+
+    let growthRate = 0;
+    if (lastMonthIncome > 0) {
+        growthRate = ((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100;
+    } else if (thisMonthIncome > 0) {
+        growthRate = 100; // Geçen ay sıfırsa %100 büyüme
+    }
+    const isGrowthPositive = growthRate >= 0;
+
+    const avgPerJob = filteredApts.length > 0 ? Math.round(totalIncome / filteredApts.length) : 0;
     const kdvAmount = Math.round(totalIncome * 0.18);
-    const taxEstimate = Math.round(netProfit * 0.15);
+    const taxEstimate = Math.round(netProfit > 0 ? netProfit * 0.15 : 0);
 
-    // Gider kategorileri — dinamik
+    // Dinamik Gider Kategorileri
     const expenseByCategory = EXPENSE_CATEGORIES.map(cat => ({
         category: cat.key,
-        amount: expenses.filter(e => e.category === cat.key).reduce((acc, e) => acc + e.amount, 0),
+        amount: filteredExps.filter(e => e.category === cat.key).reduce((acc, e) => acc + e.amount, 0),
         color: cat.color,
         icon: cat.icon,
     })).filter(c => c.amount > 0);
 
     const totalExpenseByCat = expenseByCategory.reduce((acc, e) => acc + e.amount, 0);
 
-    // Tüm işlemler birleşik
-    const allTransactions = [
-        ...DUMMY_INCOME_TRANSACTIONS.map(t => ({ ...t, type: 'income' as const })),
-        ...expenses.map(e => ({ id: e.id, date: e.date, customer: e.category, service: e.note || e.category, amount: -e.amount, type: 'expense' as const, category: e.category })),
-    ].sort((a, b) => b.id.localeCompare(a.id));
+    // Dinamik En İyi Hizmetler
+    const serviceMap: Record<string, { count: number, earning: number }> = {};
+    filteredApts.forEach(a => {
+        if (!serviceMap[a.service]) serviceMap[a.service] = { count: 0, earning: 0 };
+        serviceMap[a.service].count += 1;
+        serviceMap[a.service].earning += a.price;
+    });
 
-    const filteredTransactions = allTransactions.filter(t => {
+    const topServices = Object.keys(serviceMap).map((key, i) => {
+        const colors = ['#A78BFA', '#34D399', '#60A5FA', '#F472B6', '#FFB844'];
+        return {
+            service: key,
+            count: serviceMap[key].count,
+            earning: serviceMap[key].earning,
+            color: colors[i % colors.length]
+        };
+    }).sort((a, b) => b.earning - a.earning).slice(0, 5);
+    const maxService = topServices.length > 0 ? Math.max(...topServices.map(s => s.earning)) : 1;
+
+    // Dinamik En Sadık Müşteriler
+    const customerMap: Record<string, { emoji: string, visits: number, spent: number }> = {};
+    filteredApts.forEach(a => {
+        if (!customerMap[a.customerName]) customerMap[a.customerName] = { emoji: a.customerEmoji, visits: 0, spent: 0 };
+        customerMap[a.customerName].visits += 1;
+        customerMap[a.customerName].spent += a.price;
+    });
+
+    const topCustomers = Object.keys(customerMap).map(key => ({
+        name: key,
+        emoji: customerMap[key].emoji,
+        visits: customerMap[key].visits,
+        totalSpent: customerMap[key].spent
+    })).sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
+
+    // Dinamik Grafik Datası (Son 6 Ay)
+    const monthlyData = [];
+    for (let i = 5; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(d.getMonth() - i);
+        const mStr = TR_MONTHS_SHORT[d.getMonth()];
+        const yNum = d.getFullYear().toString();
+        const mNum = d.getMonth() + 1;
+        const pfx = `${yNum}-${mNum < 10 ? '0' + mNum : mNum}`;
+
+        const inc = appointments.filter(a => a.date?.startsWith(pfx)).reduce((acc, a) => acc + a.price, 0);
+        const exp = expenses.filter(e => e.date?.startsWith(pfx)).reduce((acc, e) => acc + e.amount, 0);
+        monthlyData.push({ month: mStr, income: inc, expense: exp });
+    }
+    const maxMonthly = Math.max(1, ...monthlyData.map(m => Math.max(m.income, m.expense)));
+
+    // Tüm işlemler birleşik ve tarihe göre sıralı
+    const allTransactions = [
+        ...filteredApts.map(t => ({ id: t.id, date: t.date, customer: t.customerName, service: t.service, amount: t.price, type: 'income' as const, category: 'Hizmet' })),
+        ...filteredExps.map(e => ({ id: e.id, date: e.date, customer: e.category, service: e.note || e.category, amount: -e.amount, type: 'expense' as const, category: e.category })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    const displayTransactions = allTransactions.filter(t => {
         if (activeFilter === 'income') return t.type === 'income';
         if (activeFilter === 'expense') return t.type === 'expense';
         return true;
     });
 
-    const maxMonthly = Math.max(...DUMMY_MONTHLY.map(m => Math.max(m.income, m.expense)));
-    const maxService = Math.max(...DUMMY_TOP_SERVICES.map(s => s.earning));
+    if (loading) {
+        return (
+            <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+                <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+                <ActivityIndicator size="large" color={COLORS.primary} />
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
@@ -403,11 +528,9 @@ export default function CariScreen() {
                             colors={[COLORS.primaryDark + '88', COLORS.primary + '55']}
                             style={styles.netCard}
                         >
-                            <Text style={styles.netCardLabel}>Net Kazanç</Text>
+                            <Text style={styles.netCardLabel}>Net Kazanç ({activePeriod === 'month' ? 'Bu Ay' : 'Bu Yıl'})</Text>
                             <Text style={styles.netCardValue}>
-                                ₺{activePeriod === 'month'
-                                    ? (thisMonthIncome - totalExpense).toLocaleString()
-                                    : netProfit.toLocaleString()}
+                                ₺{netProfit.toLocaleString()}
                             </Text>
                             {/* Büyüme sadece Bu Ay'da göster */}
                             {activePeriod === 'month' && (
@@ -418,7 +541,7 @@ export default function CariScreen() {
                                         color={isGrowthPositive ? '#34D399' : '#F87171'}
                                     />
                                     <Text style={[styles.netCardGrowthText, { color: isGrowthPositive ? '#34D399' : '#F87171' }]}>
-                                        %{Math.abs(parseFloat(growthRate))} geçen aya göre
+                                        %{Math.abs(growthRate).toFixed(1)} geçen aya göre
                                     </Text>
                                 </View>
                             )}
@@ -433,7 +556,7 @@ export default function CariScreen() {
                                     </View>
                                     <Text style={styles.incomeCardLabel}>Toplam Gelir</Text>
                                     <Text style={[styles.incomeCardValue, { color: '#34D399' }]}>
-                                        ₺{activePeriod === 'month' ? thisMonthIncome.toLocaleString() : totalIncome.toLocaleString()}
+                                        ₺{totalIncome.toLocaleString()}
                                     </Text>
                                 </LinearGradient>
                             </View>
@@ -453,8 +576,8 @@ export default function CariScreen() {
                         {/* Alt istatistikler */}
                         <View style={styles.subStats}>
                             {[
-                                { label: 'Toplam İş', value: DUMMY_INCOME_TRANSACTIONS.length.toString(), icon: 'briefcase-outline', color: COLORS.primary },
-                                { label: 'Ort. Tutar', value: `₺${avgPerJob}`, icon: 'calculator-outline', color: '#60A5FA' },
+                                { label: 'Toplam İş', value: filteredApts.length.toString(), icon: 'briefcase-outline', color: COLORS.primary },
+                                { label: 'Ort. Tutar', value: `₺${avgPerJob.toLocaleString()}`, icon: 'calculator-outline', color: '#60A5FA' },
                                 { label: 'KDV (%18)', value: `₺${kdvAmount.toLocaleString()}`, icon: 'receipt-outline', color: '#FFB844' },
                                 { label: 'Vergi Tahmini', value: `₺${taxEstimate.toLocaleString()}`, icon: 'shield-outline', color: '#F472B6' },
                             ].map((stat) => (
@@ -485,18 +608,18 @@ export default function CariScreen() {
                             </View>
 
                             <View style={styles.barChart}>
-                                {DUMMY_MONTHLY.map((month) => (
+                                {monthlyData.map((month) => (
                                     <View key={month.month} style={styles.barGroup}>
                                         <View style={styles.barPair}>
                                             <View style={styles.barWrapper}>
                                                 <View style={[styles.bar, {
-                                                    height: Math.max((month.income / maxMonthly) * 100, 4),
+                                                    height: `${Math.max((month.income / maxMonthly) * 100, 4)}%` as any,
                                                     backgroundColor: '#34D399',
                                                 }]} />
                                             </View>
                                             <View style={styles.barWrapper}>
                                                 <View style={[styles.bar, {
-                                                    height: Math.max((month.expense / maxMonthly) * 100, 4),
+                                                    height: `${Math.max((month.expense / maxMonthly) * 100, 4)}%` as any,
                                                     backgroundColor: '#F87171',
                                                     opacity: 0.8,
                                                 }]} />
@@ -509,12 +632,12 @@ export default function CariScreen() {
 
                             <View style={styles.chartAmounts}>
                                 <Text style={[styles.chartAmount, { color: '#34D399' }]}>
-                                    ₺{DUMMY_MONTHLY[DUMMY_MONTHLY.length - 1].income.toLocaleString()}
+                                    ₺{monthlyData[monthlyData.length - 1].income.toLocaleString()}
                                 </Text>
                                 <Text style={styles.chartAmountLabel}>Bu Ay Gelir</Text>
                                 <View style={styles.chartAmountDivider} />
                                 <Text style={[styles.chartAmount, { color: '#F87171' }]}>
-                                    ₺{totalExpense.toLocaleString()}
+                                    ₺{monthlyData[monthlyData.length - 1].expense.toLocaleString()}
                                 </Text>
                                 <Text style={styles.chartAmountLabel}>Bu Ay Gider</Text>
                             </View>
@@ -570,74 +693,75 @@ export default function CariScreen() {
                         ) : (
                             <View style={styles.emptyExpense}>
                                 <Ionicons name="wallet-outline" size={36} color={COLORS.textMuted} />
-                                <Text style={styles.emptyExpenseText}>Henüz gider eklenmedi</Text>
-                                <TouchableOpacity style={styles.emptyExpenseBtn} onPress={() => setShowAddExpense(true)}>
-                                    <Text style={styles.emptyExpenseBtnText}>Gider Ekle</Text>
-                                </TouchableOpacity>
+                                <Text style={styles.emptyExpenseText}>Bu periyotta gider yok</Text>
                             </View>
                         )}
                     </View>
 
                     {/* ── EN ÇOK KAZANDIRAN HİZMETLER ── */}
-                    <View style={styles.section}>
-                        <SectionTitle title="En Çok Kazandıran Hizmetler" icon="trophy-outline" />
-                        <View style={styles.servicesCard}>
-                            {DUMMY_TOP_SERVICES.map((service, index) => (
-                                <View key={service.service}>
-                                    <View style={styles.serviceRow}>
-                                        <View style={[styles.serviceRank, { backgroundColor: service.color + '22' }]}>
-                                            <Text style={[styles.serviceRankText, { color: service.color }]}>{index + 1}</Text>
-                                        </View>
-                                        <View style={styles.serviceInfo}>
-                                            <View style={styles.serviceTopRow}>
-                                                <Text style={styles.serviceName}>{service.service}</Text>
-                                                <Text style={[styles.serviceEarning, { color: service.color }]}>
-                                                    ₺{service.earning.toLocaleString()}
-                                                </Text>
+                    {topServices.length > 0 && (
+                        <View style={styles.section}>
+                            <SectionTitle title="En Çok Kazandıran Hizmetler" icon="trophy-outline" />
+                            <View style={styles.servicesCard}>
+                                {topServices.map((service, index) => (
+                                    <View key={service.service}>
+                                        <View style={styles.serviceRow}>
+                                            <View style={[styles.serviceRank, { backgroundColor: service.color + '22' }]}>
+                                                <Text style={[styles.serviceRankText, { color: service.color }]}>{index + 1}</Text>
                                             </View>
-                                            <View style={styles.serviceBarWrapper}>
-                                                <View style={[styles.serviceBarFill, {
-                                                    width: `${(service.earning / maxService) * 100}%` as any,
-                                                    backgroundColor: service.color,
-                                                    opacity: 0.7,
-                                                }]} />
+                                            <View style={styles.serviceInfo}>
+                                                <View style={styles.serviceTopRow}>
+                                                    <Text style={styles.serviceName}>{service.service}</Text>
+                                                    <Text style={[styles.serviceEarning, { color: service.color }]}>
+                                                        ₺{service.earning.toLocaleString()}
+                                                    </Text>
+                                                </View>
+                                                <View style={styles.serviceBarWrapper}>
+                                                    <View style={[styles.serviceBarFill, {
+                                                        width: `${(service.earning / maxService) * 100}%` as any,
+                                                        backgroundColor: service.color,
+                                                        opacity: 0.7,
+                                                    }]} />
+                                                </View>
+                                                <Text style={styles.serviceCount}>{service.count} işlem</Text>
                                             </View>
-                                            <Text style={styles.serviceCount}>{service.count} işlem</Text>
                                         </View>
+                                        {index < topServices.length - 1 && <View style={styles.expenseDivider} />}
                                     </View>
-                                    {index < DUMMY_TOP_SERVICES.length - 1 && <View style={styles.expenseDivider} />}
-                                </View>
-                            ))}
+                                ))}
+                            </View>
                         </View>
-                    </View>
+                    )}
 
                     {/* ── EN SADIK MÜŞTERİLER ── */}
-                    <View style={styles.section}>
-                        <SectionTitle title="En Sadık Müşteriler" icon="heart-outline" />
-                        <View style={styles.customersCard}>
-                            {DUMMY_TOP_CUSTOMERS.map((customer, index) => (
-                                <View key={customer.name}>
-                                    <View style={styles.customerRow}>
-                                        <LinearGradient
-                                            colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
-                                            style={styles.customerAvatar}
-                                        >
-                                            <Text style={{ fontSize: 20 }}>{customer.emoji}</Text>
-                                        </LinearGradient>
-                                        <View style={styles.customerInfo}>
-                                            <Text style={styles.customerName}>{customer.name}</Text>
-                                            <Text style={styles.customerVisits}>{customer.visits} ziyaret</Text>
+                    {topCustomers.length > 0 && (
+                        <View style={styles.section}>
+                            <SectionTitle title="En Sadık Müşteriler" icon="heart-outline" />
+                            <View style={styles.customersCard}>
+                                {topCustomers.map((customer, index) => (
+                                    <View key={customer.name}>
+                                        <View style={styles.customerRow}>
+                                            <LinearGradient
+                                                colors={[COLORS.primary + '44', COLORS.primaryDark + '33']}
+                                                style={styles.customerAvatar}
+                                            >
+                                                <Text style={{ fontSize: 20 }}>{customer.emoji}</Text>
+                                            </LinearGradient>
+                                            <View style={styles.customerInfo}>
+                                                <Text style={styles.customerName}>{customer.name}</Text>
+                                                <Text style={styles.customerVisits}>{customer.visits} ziyaret</Text>
+                                            </View>
+                                            <View style={styles.customerEarningWrapper}>
+                                                <Text style={styles.customerEarning}>₺{customer.totalSpent.toLocaleString()}</Text>
+                                                <Text style={styles.customerEarningLabel}>toplam harcama</Text>
+                                            </View>
                                         </View>
-                                        <View style={styles.customerEarningWrapper}>
-                                            <Text style={styles.customerEarning}>₺{customer.totalSpent.toLocaleString()}</Text>
-                                            <Text style={styles.customerEarningLabel}>toplam harcama</Text>
-                                        </View>
+                                        {index < topCustomers.length - 1 && <View style={styles.expenseDivider} />}
                                     </View>
-                                    {index < DUMMY_TOP_CUSTOMERS.length - 1 && <View style={styles.expenseDivider} />}
-                                </View>
-                            ))}
+                                ))}
+                            </View>
                         </View>
-                    </View>
+                    )}
 
                     {/* ── KDV & VERGİ ── */}
                     <View style={styles.section}>
@@ -695,45 +819,52 @@ export default function CariScreen() {
                             ))}
                         </View>
 
-                        <View style={styles.transactionsList}>
-                            {filteredTransactions.map((transaction, index) => (
-                                <View key={transaction.id}>
-                                    <View style={styles.transactionRow}>
-                                        <View style={[styles.transactionIcon, {
-                                            backgroundColor: transaction.type === 'income' ? '#34D399' + '22' : '#F87171' + '22',
-                                        }]}>
-                                            <Ionicons
-                                                name={transaction.type === 'income' ? 'arrow-down-outline' : 'arrow-up-outline'}
-                                                size={16}
-                                                color={transaction.type === 'income' ? '#34D399' : '#F87171'}
-                                            />
-                                        </View>
-                                        <View style={styles.transactionInfo}>
-                                            <Text style={styles.transactionName}>{transaction.customer}</Text>
-                                            <Text style={styles.transactionService}>{transaction.service}</Text>
-                                            <Text style={styles.transactionDate}>{transaction.date}</Text>
-                                        </View>
-                                        <View style={styles.transactionAmountWrapper}>
-                                            <Text style={[styles.transactionAmount, {
-                                                color: transaction.type === 'income' ? '#34D399' : '#F87171',
+                        {displayTransactions.length > 0 ? (
+                            <View style={styles.transactionsList}>
+                                {displayTransactions.map((transaction, index) => (
+                                    <View key={transaction.id + index}>
+                                        <View style={styles.transactionRow}>
+                                            <View style={[styles.transactionIcon, {
+                                                backgroundColor: transaction.type === 'income' ? '#34D399' + '22' : '#F87171' + '22',
                                             }]}>
-                                                {transaction.type === 'income' ? '+' : '-'}₺{Math.abs(transaction.amount).toLocaleString()}
-                                            </Text>
-                                            <View style={[styles.transactionCategoryBadge, {
-                                                backgroundColor: transaction.type === 'income' ? '#34D399' + '18' : '#F87171' + '18',
-                                            }]}>
-                                                <Text style={[styles.transactionCategoryText, {
+                                                <Ionicons
+                                                    name={transaction.type === 'income' ? 'arrow-down-outline' : 'arrow-up-outline'}
+                                                    size={16}
+                                                    color={transaction.type === 'income' ? '#34D399' : '#F87171'}
+                                                />
+                                            </View>
+                                            <View style={styles.transactionInfo}>
+                                                <Text style={styles.transactionName}>{transaction.customer}</Text>
+                                                <Text style={styles.transactionService}>{transaction.service}</Text>
+                                                <Text style={styles.transactionDate}>{formatDisplayDate(transaction.date)}</Text>
+                                            </View>
+                                            <View style={styles.transactionAmountWrapper}>
+                                                <Text style={[styles.transactionAmount, {
                                                     color: transaction.type === 'income' ? '#34D399' : '#F87171',
                                                 }]}>
-                                                    {transaction.category}
+                                                    {transaction.type === 'income' ? '+' : '-'}₺{Math.abs(transaction.amount).toLocaleString()}
                                                 </Text>
+                                                <View style={[styles.transactionCategoryBadge, {
+                                                    backgroundColor: transaction.type === 'income' ? '#34D399' + '18' : '#F87171' + '18',
+                                                }]}>
+                                                    <Text style={[styles.transactionCategoryText, {
+                                                        color: transaction.type === 'income' ? '#34D399' : '#F87171',
+                                                    }]}>
+                                                        {transaction.category}
+                                                    </Text>
+                                                </View>
                                             </View>
                                         </View>
+                                        {index < displayTransactions.length - 1 && <View style={styles.expenseDivider} />}
                                     </View>
-                                    {index < filteredTransactions.length - 1 && <View style={styles.expenseDivider} />}
-                                </View>
-                            ))}
-                        </View>
+                                ))}
+                            </View>
+                        ) : (
+                            <View style={styles.emptyExpense}>
+                                <Ionicons name="document-text-outline" size={36} color={COLORS.textMuted} />
+                                <Text style={styles.emptyExpenseText}>Bu filtreye uygun işlem bulunamadı.</Text>
+                            </View>
+                        )}
                     </View>
 
                     {/* ── DIŞA AKTAR ── */}
@@ -769,9 +900,7 @@ export default function CariScreen() {
             <AddExpenseModal
                 visible={showAddExpense}
                 onClose={() => setShowAddExpense(false)}
-                onAdd={(expense) => {
-                    setExpenses(prev => [expense, ...prev]);
-                }}
+                onAdd={handleAddExpenseToDb}
             />
         </View>
     );
