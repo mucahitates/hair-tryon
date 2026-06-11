@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Modal,
   Image,
+  Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,8 +23,20 @@ import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 const CARD_WIDTH = width * 0.8; // Ekranın %80'i genişlik
+
+// YARDIMCI FONKSİYON: Tarih Formatlama (YYYY-MM-DD -> 12 Haz 2026)
+const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+const formatDisplayDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+  const d = parseInt(parts[2], 10);
+  const m = TR_MONTHS_SHORT[parseInt(parts[1], 10) - 1];
+  const y = parts[0];
+  return `${d} ${m} ${y}`;
+};
 
 // ── TAB TOGGLE BİLEŞENİ ────────────────────────────────────
 function TabToggle({ tabs, activeIndex, onPress }: { tabs: string[]; activeIndex: number; onPress: (i: number) => void; }) {
@@ -80,7 +93,6 @@ function FollowingCard({ item }: { item: any }) {
   );
 }
 
-// **DEĞİŞİKLİK 1**: Emoji yerine resultImage gösteriliyor ve onPress eklendi
 function AICard({ item, onPress }: { item: any; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
@@ -107,26 +119,31 @@ function AICard({ item, onPress }: { item: any; onPress: () => void }) {
   );
 }
 
-function CampaignCard({ item }: { item: any }) {
+function CampaignCard({ item, onPress }: { item: any, onPress?: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
+    <TouchableOpacity
+      onPress={onPress}
+      onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()}
+      onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()}
+      activeOpacity={1}
+    >
       <Animated.View style={[styles.campaignCard, { transform: [{ scale: scaleAnim }] }]}>
         <LinearGradient colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']} style={styles.campaignGradient}>
           <Text style={styles.campaignEmoji}>{item.emoji || '🎉'}</Text>
           <View style={styles.campaignInfo}>
-            <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon}</Text>
+            <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon || 'Kuaför'}</Text>
             <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.title}</Text>
             <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc || item.description}</Text>
           </View>
           <View style={styles.campaignRight}>
             <View style={styles.campaignDate}>
               <Ionicons name="time-outline" size={10} color={COLORS.textMuted} />
-              <Text style={styles.campaignDateText}>{item.validUntil}</Text>
+              <Text style={styles.campaignDateText}>{formatDisplayDate(item.endDate) || item.validUntil}</Text>
             </View>
-            <TouchableOpacity style={styles.campaignButton}>
-              <Text style={styles.campaignButtonText}>Kullan</Text>
-            </TouchableOpacity>
+            <View style={styles.campaignButton}>
+              <Text style={styles.campaignButtonText}>İncele</Text>
+            </View>
           </View>
         </LinearGradient>
       </Animated.View>
@@ -158,21 +175,23 @@ function SponsoredCard({ item }: { item: any }) {
   return (
     <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.sponsoredCard, { transform: [{ scale: scaleAnim }] }]}>
-        <View style={styles.sponsoredTag}><Text style={styles.sponsoredTagText}>{item.tag || 'Reklam'}</Text></View>
-        <View style={styles.sponsoredAvatar}><Text style={styles.sponsoredEmoji}>{item.emoji || '⭐'}</Text></View>
+        <View style={styles.sponsoredTag}><Text style={styles.sponsoredTagText}>{item.tag || 'Önerilen'}</Text></View>
+        <View style={styles.sponsoredAvatar}><Text style={styles.sponsoredEmoji}>{item.emoji || '✂️'}</Text></View>
         <View style={styles.sponsoredInfo}>
-          <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.name}</Text>
-          <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.speciality}</Text>
+          {/* HATA BURADAYDI: item.name yerine item.salonName getirildi */}
+          <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
+            {item.salonName || item.name || 'İsimsiz Salon'}
+          </Text>
+          <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.city || 'Kuaför Salonu'}</Text>
           <View style={styles.sponsoredMeta}>
             <View style={styles.ratingRow}>
               <Ionicons name="star" size={11} color="#FFB844" />
-              <Text style={styles.ratingText}>{item.rating}</Text>
+              <Text style={styles.ratingText}>{(item.averageRating || 5.0).toFixed(1)}</Text>
             </View>
-            <Text style={styles.sponsoredPrice}>{item.price}</Text>
           </View>
         </View>
         <TouchableOpacity style={styles.bookButton}>
-          <Text style={styles.bookButtonText}>Randevu</Text>
+          <Text style={styles.bookButtonText}>İncele</Text>
         </TouchableOpacity>
       </Animated.View>
     </TouchableOpacity>
@@ -194,6 +213,198 @@ function FadeTabPanel({ active, children }: { active: boolean; children: React.R
   );
 }
 
+// ─── KAMPANYA DETAY MODALI (MÜŞTERİ İÇİN) ───────────────────
+// ─── KAMPANYA DETAY MODALI (MÜŞTERİ İÇİN) ───────────────────
+function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
+  visible: boolean;
+  campaign: any;
+  onClose: () => void;
+  onBook: () => void;
+}) {
+  const slideAnim = useRef(new Animated.Value(height)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
+    } else {
+      Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start();
+    }
+  }, [visible]);
+
+  if (!campaign) return null;
+
+  const targetAudienceLabels: Record<string, string> = {
+    all: 'Tüm Müşteriler',
+    new: 'Sadece Yeni Müşteriler',
+    loyal: 'Sadık Müşteriler (5+ Randevu)',
+    passive: 'Uzun Süredir Gelmeyenler'
+  };
+
+  const audienceText = campaign.targetAudience ? targetAudienceLabels[campaign.targetAudience] : 'Tüm Müşteriler';
+  const remainingUsage = campaign.maxUsage ? campaign.maxUsage - (campaign.usageCount || 0) : null;
+
+  return (
+    <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
+      <View style={modalStyles.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <Animated.View style={[modalStyles.container, { transform: [{ translateY: slideAnim }] }]}>
+          <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
+
+          <View style={modalStyles.handle} />
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={modalStyles.scrollContent}>
+
+            {/* ── ÜST BİLGİ (SALON & EMOJİ) ── */}
+            <View style={modalStyles.heroSection}>
+              <View style={modalStyles.salonBadge}>
+                <Ionicons name="storefront-outline" size={14} color={COLORS.primary} />
+                <Text style={modalStyles.salonName}>{campaign.salon || 'Kuaför Salonu'}</Text>
+              </View>
+
+              <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '11']} style={modalStyles.heroCircle}>
+                <Text style={modalStyles.heroEmoji}>{campaign.emoji || '🎁'}</Text>
+              </LinearGradient>
+
+              <Text style={modalStyles.title}>{campaign.title}</Text>
+
+              <View style={modalStyles.discountRow}>
+                <View style={modalStyles.discountBadge}>
+                  <Ionicons name="pricetag" size={16} color="#34D399" />
+                  <Text style={modalStyles.discountText}>%{campaign.discount} İndirim</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ── ACİLİYET UYARISI (Varsa) ── */}
+            {remainingUsage !== null && remainingUsage < 10 && remainingUsage > 0 && (
+              <View style={modalStyles.urgencyBox}>
+                <Ionicons name="flame" size={18} color="#FFB844" />
+                <Text style={styles.trendLikesText}>
+                  Acele et, kampanyadan yararlanabilecek <Text style={{ fontWeight: 'bold', color: COLORS.white }}>son {remainingUsage} kişi!</Text>
+                </Text>
+              </View>
+            )}
+
+            {/* ── AÇIKLAMA ── */}
+            <View style={modalStyles.descBox}>
+              <Text style={modalStyles.descText}>{campaign.description}</Text>
+            </View>
+
+            {/* ── DETAY BİLGİLERİ (TARİH VE KİTLE) ── */}
+            <View style={modalStyles.infoGrid}>
+              <View style={modalStyles.infoItem}>
+                <View style={modalStyles.infoIconBox}>
+                  <Ionicons name="calendar-outline" size={20} color={COLORS.primary} />
+                </View>
+                <View style={modalStyles.infoTextCol}>
+                  <Text style={modalStyles.infoLabel}>Geçerlilik Tarihi</Text>
+                  <Text style={modalStyles.infoValue}>
+                    {formatDisplayDate(campaign.startDate)} - {formatDisplayDate(campaign.endDate)}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={modalStyles.infoItem}>
+                <View style={modalStyles.infoIconBox}>
+                  <Ionicons name="people-outline" size={20} color={COLORS.primary} />
+                </View>
+                <View style={modalStyles.infoTextCol}>
+                  <Text style={modalStyles.infoLabel}>Kampanya Şartı</Text>
+                  <Text style={modalStyles.infoValue}>{audienceText}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ── GEÇERLİ HİZMETLER (CHIP YAPISI) ── */}
+            <View style={modalStyles.servicesSection}>
+              <View style={modalStyles.servicesHeader}>
+                <Ionicons name="cut-outline" size={18} color={COLORS.textMuted} />
+                <Text style={modalStyles.servicesTitle}>Geçerli Hizmetler</Text>
+              </View>
+              <View style={modalStyles.servicesGrid}>
+                {campaign.services && campaign.services.length > 0 ? (
+                  campaign.services.map((s: string, idx: number) => (
+                    <View key={idx} style={modalStyles.serviceChip}>
+                      <Text style={modalStyles.serviceChipText}>{s}</Text>
+                    </View>
+                  ))
+                ) : (
+                  <View style={modalStyles.serviceChip}>
+                    <Text style={modalStyles.serviceChipText}>Tüm Hizmetler</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+
+          </ScrollView>
+
+          {/* ── FOOTER - AKSİYON BUTONLARI ── */}
+          <View style={modalStyles.footer}>
+            <TouchableOpacity style={modalStyles.cancelBtn} onPress={onClose}>
+              <Text style={modalStyles.cancelBtnText}>Vazgeç</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={modalStyles.bookBtn} onPress={onBook}>
+              <LinearGradient
+                colors={['#34D399', '#10B981']}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                style={modalStyles.bookBtnGradient}
+              >
+                <Text style={modalStyles.bookBtnText}>Fırsatla Randevu Al</Text>
+                <Ionicons name="arrow-forward" size={18} color={COLORS.white} />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+const modalStyles = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
+  container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.90, overflow: 'hidden' },
+  handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
+  scrollContent: { padding: SPACING.lg, paddingBottom: 40 },
+
+  heroSection: { alignItems: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md },
+  salonBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 6, paddingHorizontal: 16, borderRadius: RADIUS.full, marginBottom: SPACING.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  salonName: { fontSize: FONTS.small, color: COLORS.textSecondary, fontWeight: '600', letterSpacing: 0.5 },
+  heroCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
+  heroEmoji: { fontSize: 42 },
+  title: { fontSize: 26, fontWeight: '900', color: COLORS.textPrimary, textAlign: 'center', marginBottom: SPACING.sm, lineHeight: 32 },
+
+  discountRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 4 },
+  discountBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#34D399' + '18', paddingVertical: 8, paddingHorizontal: 16, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#34D399' + '55' },
+  discountText: { color: '#34D399', fontWeight: 'bold', fontSize: FONTS.medium },
+
+  urgencyBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFB844' + '15', padding: SPACING.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#FFB844' + '33', marginBottom: SPACING.md },
+
+  descBox: { backgroundColor: 'rgba(255,255,255,0.03)', padding: SPACING.md, borderRadius: RADIUS.lg, marginBottom: SPACING.lg },
+  descText: { color: COLORS.textSecondary, fontSize: FONTS.regular, lineHeight: 24, textAlign: 'center' },
+
+  infoGrid: { gap: SPACING.sm, marginBottom: SPACING.xl },
+  infoItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: 'rgba(255,255,255,0.04)', padding: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
+  infoIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '18', justifyContent: 'center', alignItems: 'center' },
+  infoTextCol: { flex: 1 },
+  infoLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
+  infoValue: { fontSize: FONTS.regular, color: COLORS.textPrimary, fontWeight: '700' },
+
+  servicesSection: { marginBottom: SPACING.md },
+  servicesHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.sm, paddingLeft: 4 },
+  servicesTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
+  servicesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  serviceChip: { backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
+  serviceChipText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '500' },
+
+  footer: { flexDirection: 'row', gap: SPACING.sm, padding: SPACING.lg, paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(18,10,31,0.95)' },
+  cancelBtn: { flex: 1, paddingVertical: 16, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
+  cancelBtnText: { color: COLORS.white, fontWeight: '600', fontSize: FONTS.regular },
+  bookBtn: { flex: 2, borderRadius: RADIUS.xl, overflow: 'hidden' },
+  bookBtnGradient: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 16 },
+  bookBtnText: { color: COLORS.white, fontWeight: 'bold', fontSize: FONTS.regular },
+});
+
 // ── ANA EKRAN ─────────────────────────────────────────────
 export default function CustomerHomeScreen() {
   const router = useRouter();
@@ -213,8 +424,10 @@ export default function CustomerHomeScreen() {
 
   // Modal State
   const [selectedAiItem, setSelectedAiItem] = useState<any>(null);
+  const [selectedCampaign, setSelectedCampaign] = useState<any>(null);
+  const [showCampaignModal, setShowCampaignModal] = useState(false);
 
-  // **DEĞİŞİKLİK 3**: Tam ekran fotoğraf için state
+  // Tam ekran fotoğraf için state
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
 
   // Animations
@@ -354,19 +567,7 @@ export default function CustomerHomeScreen() {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followingList}>
               {following.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={styles.followingCard}
-                  onPress={() => router.push(`/hairdresser/${item.hairdresserId}` as any)}
-                >
-                  <View style={styles.followingAvatarWrapper}>
-                    <View style={[styles.followingAvatar, item.isOnline && styles.followingAvatarOnline]}>
-                      <Text style={styles.followingEmoji}>{item.emoji || '✂️'}</Text>
-                    </View>
-                    {item.isOnline && <View style={styles.onlineDot} />}
-                  </View>
-                  <Text style={styles.followingName} numberOfLines={1}>{item.salonName}</Text>
-                </TouchableOpacity>
+                <FollowingCard key={item.id} item={item} />
               ))}
             </ScrollView>
           )}
@@ -423,25 +624,14 @@ export default function CustomerHomeScreen() {
                   </View>
                 ) : (
                   campaigns.slice(0, 4).map((item) => (
-                    <TouchableOpacity key={item.id} style={styles.campaignCard} activeOpacity={0.85}>
-                      <LinearGradient colors={['rgba(167,139,250,0.15)', 'rgba(124,58,237,0.1)']} style={styles.campaignGradient}>
-                        <Text style={styles.campaignEmoji}>{item.emoji || '🎉'}</Text>
-                        <View style={styles.campaignInfo}>
-                          <Text style={styles.campaignSalon} numberOfLines={1}>{item.salon}</Text>
-                          <Text style={styles.campaignTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.title}</Text>
-                          <Text style={styles.campaignDesc} numberOfLines={1}>{item.desc}</Text>
-                        </View>
-                        <View style={styles.campaignRight}>
-                          <View style={styles.campaignDate}>
-                            <Ionicons name="time-outline" size={10} color={COLORS.textMuted} />
-                            <Text style={styles.campaignDateText}>{item.validUntil}</Text>
-                          </View>
-                          <View style={styles.campaignButton}>
-                            <Text style={styles.campaignButtonText}>Kullan</Text>
-                          </View>
-                        </View>
-                      </LinearGradient>
-                    </TouchableOpacity>
+                    <CampaignCard
+                      key={item.id}
+                      item={item}
+                      onPress={() => {
+                        setSelectedCampaign(item);
+                        setShowCampaignModal(true);
+                      }}
+                    />
                   ))
                 )}
               </View>
@@ -451,17 +641,7 @@ export default function CustomerHomeScreen() {
             <FadeTabPanel active={discoverTab === 1}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}>
                 {trending.map((item) => (
-                  <TouchableOpacity key={item.id} style={styles.trendCard} activeOpacity={0.85}>
-                    <Text style={styles.trendEmoji}>{item.emoji}</Text>
-                    <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.style}</Text>
-                    <View style={styles.trendMeta}>
-                      <Text style={styles.trendTag} numberOfLines={1}>{item.trend}</Text>
-                      <View style={styles.trendLikes}>
-                        <Ionicons name="heart" size={10} color={COLORS.error} />
-                        <Text style={styles.trendLikesText}>{item.likes}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
+                  <TrendCard key={item.id} item={item} />
                 ))}
               </ScrollView>
             </FadeTabPanel>
@@ -470,35 +650,7 @@ export default function CustomerHomeScreen() {
             <FadeTabPanel active={discoverTab === 2}>
               <View style={styles.discoverList}>
                 {suggested.map((item) => (
-                  <TouchableOpacity
-                    key={item.id}
-                    style={styles.sponsoredCard}
-                    onPress={() => router.push(`/hairdresser/${item.uid || item.id}` as any)}
-                    activeOpacity={0.85}
-                  >
-                    <View style={styles.sponsoredAvatar}>
-                      <Text style={styles.sponsoredEmoji}>✂️</Text>
-                    </View>
-                    <View style={styles.sponsoredInfo}>
-                      <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{item.salonName}</Text>
-                      <Text style={styles.sponsoredSpeciality} numberOfLines={1}>{item.city}</Text>
-                      <View style={styles.sponsoredMeta}>
-                        <View style={styles.ratingRow}>
-                          <Ionicons name="star" size={11} color="#FFB844" />
-                          <Text style={styles.ratingText}>{(item.averageRating || 0).toFixed(1)}</Text>
-                        </View>
-                        <Text style={styles.sponsoredPrice}>
-                          {item.services && item.services.length > 0 ? `₺${Math.min(...item.services.map((s: any) => s.price))}+` : ''}
-                        </Text>
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.bookButton}
-                      onPress={() => router.push(`/hairdresser/${item.uid || item.id}` as any)}
-                    >
-                      <Text style={styles.bookButtonText}>Randevu</Text>
-                    </TouchableOpacity>
-                  </TouchableOpacity>
+                  <SponsoredCard key={item.id} item={item} />
                 ))}
               </View>
             </FadeTabPanel>
@@ -507,15 +659,12 @@ export default function CustomerHomeScreen() {
         </Animated.View>
       </ScrollView>
 
-
-
-      {/* ── TEK MODAL (KOŞULLU RENDER İLE) ── */}
+      {/* ── AI GÖRSEL MODAL ── */}
       <Modal
         visible={!!selectedAiItem}
         transparent
         animationType="fade"
         onRequestClose={() => {
-          // Geri tuşuna basıldığında önce tam ekranı kapat, yoksa modalı kapat
           if (fullscreenImage) setFullscreenImage(null);
           else setSelectedAiItem(null);
         }}
@@ -571,6 +720,20 @@ export default function CustomerHomeScreen() {
         )}
       </Modal>
 
+      {/* ── KAMPANYA DETAY MODALI ── */}
+      <CustomerCampaignModal
+        visible={showCampaignModal}
+        campaign={selectedCampaign}
+        onClose={() => setShowCampaignModal(false)}
+        onBook={() => {
+          setShowCampaignModal(false);
+          // Kampanya ID'sini parametre olarak atıp randevu ekranına yönlendirme
+          router.push({
+            pathname: '/(customer)/booking',
+            params: { campaignId: selectedCampaign.id }
+          } as any);
+        }}
+      />
 
     </View>
   );
@@ -620,7 +783,6 @@ const styles = StyleSheet.create({
   tabPanelContainer: { position: 'relative', marginBottom: SPACING.lg },
   aiCardList: { paddingHorizontal: SPACING.lg, gap: SPACING.md, paddingBottom: SPACING.sm },
   aiCard: { width: 110, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, backgroundColor: 'rgba(255,255,255,0.04)' },
-  // **DEĞİŞİKLİK 1**: Kart stili güncellendi
   aiCardImage: { width: '100%', height: 110 },
   aiCardGradient: { width: '100%', height: 110, alignItems: 'center', justifyContent: 'center' },
   aiCardEmoji: { fontSize: 32 },
@@ -632,7 +794,7 @@ const styles = StyleSheet.create({
   discoverList: { gap: SPACING.md, paddingBottom: SPACING.md },
   emptyDiscover: { padding: SPACING.xl, alignItems: 'center' },
   emptyDiscoverText: { fontSize: FONTS.small, color: COLORS.textMuted },
-  campaignCard: { height: 62,  borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 2, borderColor: COLORS.border },
+  campaignCard: { height: 62, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 2, borderColor: COLORS.border },
   campaignGradient: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, gap: SPACING.md },
   campaignEmoji: { fontSize: 28 },
   campaignInfo: { flex: 1, gap: 1, overflow: 'hidden' },
@@ -665,20 +827,18 @@ const styles = StyleSheet.create({
   sponsoredPrice: { fontSize: FONTS.small, color: COLORS.success, fontWeight: '600' },
   bookButton: { backgroundColor: COLORS.primary, paddingVertical: 8, paddingHorizontal: 10, borderRadius: RADIUS.md, flexShrink: 0 },
   bookButtonText: { fontSize: 11, color: COLORS.white, fontWeight: '700' },
-  // Modal Stilleri
+
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' },
   modalCloseArea: { position: 'absolute', width: '100%', height: '100%' },
   modalContent: { width: '90%', backgroundColor: '#1A0533', borderRadius: RADIUS.xl, padding: SPACING.lg, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', zIndex: 2 },
   modalCloseBtn: { position: 'absolute', top: 10, right: 10, zIndex: 10 },
   modalTitle: { color: COLORS.white, fontSize: FONTS.xlarge, fontWeight: 'bold', marginTop: 10 },
   modalSubtitle: { color: COLORS.primary, fontSize: FONTS.medium, fontWeight: '600', marginBottom: SPACING.xl },
-  // **DEĞİŞİKLİK 2**: Modalda fotoğraflar daha büyük
   comparisonContainer: { flexDirection: 'row', width: '100%', gap: SPACING.md, minHeight: width * 0.6 },
   comparisonHalf: { flex: 1, alignItems: 'center' },
   comparisonLabel: { color: COLORS.textMuted, fontSize: FONTS.small, marginBottom: 5, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1 },
   comparisonImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: RADIUS.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   placeholderImg: { width: '100%', aspectRatio: 3 / 4, borderRadius: RADIUS.lg, backgroundColor: 'rgba(255,255,255,0.05)', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  // **DEĞİŞİKLİK 3**: Tam ekran stilleri
   fullscreenOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.95)', justifyContent: 'center', alignItems: 'center' },
   fullscreenImage: { width: '100%', height: '100%' },
   fullscreenClose: { position: 'absolute', top: 50, right: 20 },
