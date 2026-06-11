@@ -11,7 +11,8 @@ import {
   ActivityIndicator,
   Modal,
   Image,
-  Platform
+  Platform,
+  Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,7 +21,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
 // FIREBASE IMPORTS
-import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit,doc,getDoc } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 
 const { width, height } = Dimensions.get('window');
@@ -214,7 +215,6 @@ function FadeTabPanel({ active, children }: { active: boolean; children: React.R
 }
 
 // ─── KAMPANYA DETAY MODALI (MÜŞTERİ İÇİN) ───────────────────
-// ─── KAMPANYA DETAY MODALI (MÜŞTERİ İÇİN) ───────────────────
 function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
   visible: boolean;
   campaign: any;
@@ -222,14 +222,31 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
   onBook: () => void;
 }) {
   const slideAnim = useRef(new Animated.Value(height)).current;
+  const router = useRouter();
+  const { user } = useAuthStore(); 
+  
+  // Kuaför bilgilerini tutacağımız yeni state
+  const [hairdresser, setHairdresser] = useState<any>(null);
 
   useEffect(() => {
     if (visible) {
       Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
+      
+      // Modalı açınca kampanya sahibinin profil bilgilerini Firebase'den çekiyoruz
+      if (campaign?.hairdresserId) {
+        const fetchHairdresser = async () => {
+          const hdDoc = await getDoc(doc(db, 'hairdresserProfiles', campaign.hairdresserId));
+          if (hdDoc.exists()) {
+            setHairdresser(hdDoc.data());
+          }
+        };
+        fetchHairdresser();
+      }
     } else {
       Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start();
+      setHairdresser(null); // Kapatırken temizle
     }
-  }, [visible]);
+  }, [visible, campaign]);
 
   if (!campaign) return null;
 
@@ -243,6 +260,43 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
   const audienceText = campaign.targetAudience ? targetAudienceLabels[campaign.targetAudience] : 'Tüm Müşteriler';
   const remainingUsage = campaign.maxUsage ? campaign.maxUsage - (campaign.usageCount || 0) : null;
 
+  const handleBooking = async () => {
+    if (!user?.uid) {
+      Alert.alert('Giriş Yapın', 'Randevu almak için giriş yapmalısınız.');
+      return;
+    }
+
+    const pastCount = 0; // Şimdilik test amaçlı 0 kabul ediyoruz
+    const audience = campaign.targetAudience;
+
+    if (audience === 'new' && pastCount > 0) {
+      Alert.alert('Üzgünüz 😔', 'Bu kampanya sadece salonumuzu ilk kez ziyaret edecek müşterilerimiz için geçerlidir.');
+      return;
+    }
+    
+    if (audience === 'loyal' && pastCount < 5) {
+      Alert.alert('Sadakat Kampanyası', `Bu kampanyadan yararlanmak için salonda 5 randevu tamamlamış olmalısınız. (Sizin: ${pastCount})`);
+      return;
+    }
+
+    if (audience === 'passive') {
+      if (pastCount === 0) {
+        Alert.alert('Uygun Değil', 'Bu kampanya sadece eski müşterilerimiz için geçerlidir.');
+        return;
+      }
+    }
+
+    onClose();
+    
+    router.push({
+      pathname: '/(customer)/booking',
+      params: { 
+        campaignId: campaign.id,
+        hairdresserId: campaign.hairdresserId 
+      }
+    } as any);
+  };
+
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
       <View style={modalStyles.overlay}>
@@ -254,13 +308,44 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={modalStyles.scrollContent}>
 
-            {/* ── ÜST BİLGİ (SALON & EMOJİ) ── */}
-            <View style={modalStyles.heroSection}>
-              <View style={modalStyles.salonBadge}>
-                <Ionicons name="storefront-outline" size={14} color={COLORS.primary} />
-                <Text style={modalStyles.salonName}>{campaign.salon || 'Kuaför Salonu'}</Text>
+            {/* ── 1. KUAFÖR KÜNYESİ (YENİ EKLENEN KISIM) ── */}
+            <TouchableOpacity 
+              style={modalStyles.hdProfileRow} 
+              activeOpacity={0.8}
+              onPress={() => {
+                onClose();
+                router.push(`/hairdresser/${campaign.hairdresserId}` as any);
+              }}
+            >
+              <View style={modalStyles.hdAvatarContainer}>
+                {hairdresser?.profileImage ? (
+                  <Image source={{ uri: hairdresser.profileImage }} style={modalStyles.hdAvatarImg} />
+                ) : (
+                  <View style={modalStyles.hdAvatarFallback}>
+                    <Text style={modalStyles.hdAvatarEmoji}>{hairdresser?.emoji || '✂️'}</Text>
+                  </View>
+                )}
+              </View>
+              
+              <View style={modalStyles.hdInfoContainer}>
+                <Text style={modalStyles.hdSalonName} numberOfLines={1}>
+                  {hairdresser?.salonName || campaign.salon || 'Kuaför Salonu'}
+                </Text>
+                <Text style={modalStyles.hdName} numberOfLines={1}>
+                  {hairdresser?.firstName || hairdresser?.name || 'Kuaför'}
+                </Text>
               </View>
 
+              <View style={modalStyles.hdRatingContainer}>
+                <Ionicons name="star" size={14} color="#FFB844" />
+                <Text style={modalStyles.hdRatingText}>
+                  {(hairdresser?.averageRating || 5.0).toFixed(1)}
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* ── 2. KAMPANYA BAŞLIĞI VE EMOJİSİ (AYNI KALAN KISIM) ── */}
+            <View style={modalStyles.heroSection}>
               <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '11']} style={modalStyles.heroCircle}>
                 <Text style={modalStyles.heroEmoji}>{campaign.emoji || '🎁'}</Text>
               </LinearGradient>
@@ -275,11 +360,11 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
               </View>
             </View>
 
-            {/* ── ACİLİYET UYARISI (Varsa) ── */}
+            {/* ── ACİLİYET UYARISI ── */}
             {remainingUsage !== null && remainingUsage < 10 && remainingUsage > 0 && (
               <View style={modalStyles.urgencyBox}>
                 <Ionicons name="flame" size={18} color="#FFB844" />
-                <Text style={styles.trendLikesText}>
+                <Text style={{ fontSize: 10, color: COLORS.textMuted }}>
                   Acele et, kampanyadan yararlanabilecek <Text style={{ fontWeight: 'bold', color: COLORS.white }}>son {remainingUsage} kişi!</Text>
                 </Text>
               </View>
@@ -290,7 +375,7 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
               <Text style={modalStyles.descText}>{campaign.description}</Text>
             </View>
 
-            {/* ── DETAY BİLGİLERİ (TARİH VE KİTLE) ── */}
+            {/* ── DETAY BİLGİLERİ ── */}
             <View style={modalStyles.infoGrid}>
               <View style={modalStyles.infoItem}>
                 <View style={modalStyles.infoIconBox}>
@@ -315,7 +400,7 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
               </View>
             </View>
 
-            {/* ── GEÇERLİ HİZMETLER (CHIP YAPISI) ── */}
+            {/* ── GEÇERLİ HİZMETLER ── */}
             <View style={modalStyles.servicesSection}>
               <View style={modalStyles.servicesHeader}>
                 <Ionicons name="cut-outline" size={18} color={COLORS.textMuted} />
@@ -338,13 +423,13 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
 
           </ScrollView>
 
-          {/* ── FOOTER - AKSİYON BUTONLARI ── */}
+          {/* ── FOOTER ── */}
           <View style={modalStyles.footer}>
             <TouchableOpacity style={modalStyles.cancelBtn} onPress={onClose}>
               <Text style={modalStyles.cancelBtnText}>Vazgeç</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={modalStyles.bookBtn} onPress={onBook}>
+            <TouchableOpacity style={modalStyles.bookBtn} onPress={handleBooking}>
               <LinearGradient
                 colors={['#34D399', '#10B981']}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -361,19 +446,33 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
   );
 }
 
+// Stillerin sadece yeni eklenen Kuaför Künyesi kısmını aşağıya ekliyorum
+// Kendi modalStyles objenin İÇİNE (heroSection'ın üstüne) şu yeni stilleri yapıştır:
 const modalStyles = StyleSheet.create({
+  // ... (overlay, container, handle, scrollContent aynı kalacak) ...
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.90, overflow: 'hidden' },
   handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
   scrollContent: { padding: SPACING.lg, paddingBottom: 40 },
 
+  // --- YENİ EKLENEN KUAFÖR KÜNYESİ STİLLERİ ---
+  hdProfileRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', padding: 12, borderRadius: RADIUS.xl, marginBottom: SPACING.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  hdAvatarContainer: { marginRight: 12 },
+  hdAvatarImg: { width: 50, height: 50, borderRadius: 25 },
+  hdAvatarFallback: { width: 50, height: 50, borderRadius: 25, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.primary + '44' },
+  hdAvatarEmoji: { fontSize: 24 },
+  hdInfoContainer: { flex: 1, justifyContent: 'center' },
+  hdSalonName: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.white, marginBottom: 2 },
+  hdName: { fontSize: FONTS.small, color: COLORS.textMuted },
+  hdRatingContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB84415', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#FFB84433', gap: 4 },
+  hdRatingText: { color: '#FFB844', fontWeight: 'bold', fontSize: FONTS.small },
+  // --------------------------------------------
+
   heroSection: { alignItems: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md },
-  salonBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 6, paddingHorizontal: 16, borderRadius: RADIUS.full, marginBottom: SPACING.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
-  salonName: { fontSize: FONTS.small, color: COLORS.textSecondary, fontWeight: '600', letterSpacing: 0.5 },
   heroCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
   heroEmoji: { fontSize: 42 },
   title: { fontSize: 26, fontWeight: '900', color: COLORS.textPrimary, textAlign: 'center', marginBottom: SPACING.sm, lineHeight: 32 },
-
+  
   discountRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 4 },
   discountBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#34D399' + '18', paddingVertical: 8, paddingHorizontal: 16, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#34D399' + '55' },
   discountText: { color: '#34D399', fontWeight: 'bold', fontSize: FONTS.medium },
@@ -397,7 +496,7 @@ const modalStyles = StyleSheet.create({
   serviceChip: { backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   serviceChipText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '500' },
 
-  footer: { flexDirection: 'row', gap: SPACING.sm, padding: SPACING.lg, paddingBottom: Platform.OS === 'ios' ? 34 : SPACING.lg, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(18,10,31,0.95)' },
+  footer: { flexDirection: 'row', gap: SPACING.sm, padding: SPACING.lg, paddingBottom: 34, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(18,10,31,0.95)' },
   cancelBtn: { flex: 1, paddingVertical: 16, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { color: COLORS.white, fontWeight: '600', fontSize: FONTS.regular },
   bookBtn: { flex: 2, borderRadius: RADIUS.xl, overflow: 'hidden' },

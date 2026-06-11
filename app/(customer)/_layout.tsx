@@ -2,7 +2,7 @@
 // Üst koyu kavis: 6 ikon barı
 // Alt mor kavis: tıklanabilir AI Saç butonu (Tabs dışında absolute katman)
 
-import { Tabs, useRouter,usePathname } from 'expo-router';
+import { Tabs, useRouter, usePathname } from 'expo-router';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity } from 'react-native';
 import { useRef, useEffect } from 'react';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,7 +64,7 @@ function TabIcon({ iconName, label, focused, curveOffset }: { iconName: any; lab
           name={focused ? iconName : `${iconName}-outline`}
           size={26}
           color={focused ? '#000000' : THEME.textMuted}
-          
+
         />
       </Animated.View>
       <Animated.View style={[
@@ -137,7 +137,7 @@ function AICurveButton() {
   const pathname = usePathname();
   const scaleAnim = useRef(new Animated.Value(1)).current;
 
-  if (pathname.includes('/chat/')) return null; // Chat ekranındayken gizle
+  if (pathname.includes('/chat/') || pathname.includes('booking')) return null; // Chat veya Booking ekranındayken gizle
   return (
     <View style={aiStyles.layer} pointerEvents="box-none">
       <TouchableOpacity
@@ -231,15 +231,19 @@ export default function CustomerLayout() {
           ),
         }}
       >
-        <Tabs.Screen name="my-jobs" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="briefcase" label="İşlerim" focused={focused} curveOffset={24} /> ) }} />
-        <Tabs.Screen name="explore" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="search" label="Keşfet" focused={focused} curveOffset={-10} /> ) }} />
-        <Tabs.Screen name="chats" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="chatbubble" label="Sohbet" focused={focused} curveOffset={-24} /> ) }} />
-        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="home" label="Ana Sayfa"  focused={focused} curveOffset={-24} /> ) }} />
-        <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-10} /> ) }} />
-        <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => ( <TabIcon iconName="person" label="Profil" focused={focused} curveOffset={24} /> ) }} />
+        <Tabs.Screen name="my-jobs" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="briefcase" label="İşlerim" focused={focused} curveOffset={24} />) }} />
+        <Tabs.Screen name="explore" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="search" label="Keşfet" focused={focused} curveOffset={-10} />) }} />
+        <Tabs.Screen name="chats" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="chatbubble" label="Sohbet" focused={focused} curveOffset={-24} />) }} />
+        <Tabs.Screen name="index" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="home" label="Ana Sayfa" focused={focused} curveOffset={-24} />) }} />
+        <Tabs.Screen name="appointments" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="calendar" label="Randevu" focused={focused} curveOffset={-10} />) }} />
+        <Tabs.Screen name="profile" options={{ tabBarIcon: ({ focused }) => (<TabIcon iconName="person" label="Profil" focused={focused} curveOffset={24} />) }} />
+        
         <Tabs.Screen name="ai-hair" options={{ href: null }} />
-        <Tabs.Screen name="chat/[chatId]" options={{ href: null,tabBarStyle: { display: 'none' }, }} />
+        <Tabs.Screen name="chat/[chatId]" options={{ href: null, tabBarStyle: { display: 'none' }, }} />
+        <Tabs.Screen name="booking" options={{href: null, headerShown: false, tabBarStyle: { display: 'none' },  }}
+        />
       </Tabs>
+      
 
       {/* Alttaki mor kavisli AI butonu */}
       <AICurveButton />
