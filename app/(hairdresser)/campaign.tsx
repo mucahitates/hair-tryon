@@ -1,7 +1,4 @@
-// ─────────────────────────────────────────────────────────────
-// KAMPANYA PANELİ (app/(hairdresser)/campaign.tsx)
-// ─────────────────────────────────────────────────────────────
-
+// app/(hairdresser)/campaign.tsx
 import { useState, useRef, useEffect } from 'react';
 import {
   View,
@@ -14,12 +11,22 @@ import {
   Modal,
   TextInput,
   Alert,
-  FlatList,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
+import { useAuthStore } from '../../src/stores/authStore';
+
+// TAKVİM KÜTÜPHANESİ
+import DateTimePicker from '@react-native-community/datetimepicker';
+
+// FIREBASE IMPORTS
+import { collection, query, where, onSnapshot, addDoc, doc, updateDoc, deleteDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { db } from '../../src/services/firebase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -30,6 +37,7 @@ type TargetAudience = 'all' | 'new' | 'loyal' | 'passive';
 
 interface Campaign {
   id: string;
+  hairdresserId: string;
   title: string;
   description: string;
   type: CampaignType;
@@ -46,113 +54,10 @@ interface Campaign {
   potentialEarning: number;
   emoji: string;
   dailyUsage: number[];
-  createdAt: string;
+  createdAt: any;
 }
 
-// ─── DUMMY VERİ ────────────────────────────────────────────
-const DUMMY_CAMPAIGNS: Campaign[] = [
-  {
-    id: 'c1',
-    title: 'Yaz Sezonu İndirimi',
-    description: 'Tüm boyama hizmetlerinde %20 indirim! Bu fırsatı kaçırmayın.',
-    type: 'discount',
-    status: 'active',
-    discount: 20,
-    services: ['Balayage', 'Ombre', 'Saç Boyama'],
-    targetAudience: 'all',
-    startDate: '1 Haz 2025',
-    endDate: '30 Haz 2025',
-    maxUsage: 50,
-    usageCount: 23,
-    viewCount: 412,
-    earning: 8625,
-    potentialEarning: 11500,
-    emoji: '☀️',
-    dailyUsage: [2, 1, 3, 2, 4, 3, 2, 1, 2, 3, 0, 1, 2, 3],
-    createdAt: '28 May 2025',
-  },
-  {
-    id: 'c2',
-    title: 'İlk Ziyaret Paketi',
-    description: 'İlk kez gelen müşterilerimize özel kesim + bakım paketi.',
-    type: 'firsttime',
-    status: 'active',
-    discount: 30,
-    services: ['Kesim', 'Protein Bakım'],
-    targetAudience: 'new',
-    startDate: '1 May 2025',
-    endDate: '31 Tem 2025',
-    maxUsage: 100,
-    usageCount: 41,
-    viewCount: 689,
-    earning: 12300,
-    potentialEarning: 18000,
-    emoji: '🎁',
-    dailyUsage: [3, 2, 4, 3, 5, 4, 3, 2, 3, 4, 2, 3, 4, 5],
-    createdAt: '25 Nis 2025',
-  },
-  {
-    id: 'c3',
-    title: 'Sadık Müşteri Ödülü',
-    description: '5 ve üzeri ziyarette keratin bakımda %25 indirim.',
-    type: 'loyalty',
-    status: 'active',
-    discount: 25,
-    services: ['Keratin Bakım'],
-    targetAudience: 'loyal',
-    startDate: '15 May 2025',
-    endDate: '15 Ağu 2025',
-    emoji: '👑',
-    maxUsage: 30,
-    usageCount: 12,
-    viewCount: 203,
-    earning: 5400,
-    potentialEarning: 9000,
-    dailyUsage: [1, 0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 1, 0, 1],
-    createdAt: '10 May 2025',
-  },
-  {
-    id: 'c4',
-    title: 'Kış Bakım Kampanyası',
-    description: 'Kış aylarına özel saç bakım paketi.',
-    type: 'package',
-    status: 'draft',
-    discount: 15,
-    services: ['Keratin', 'Protein Bakım', 'Fön'],
-    targetAudience: 'all',
-    startDate: '1 Ara 2025',
-    endDate: '28 Şub 2026',
-    maxUsage: 40,
-    usageCount: 0,
-    viewCount: 0,
-    earning: 0,
-    potentialEarning: 12000,
-    emoji: '❄️',
-    dailyUsage: [],
-    createdAt: '20 May 2025',
-  },
-  {
-    id: 'c5',
-    title: 'Bahar Özel',
-    description: 'Bahar sezonuna özel tüm hizmetlerde indirim.',
-    type: 'discount',
-    status: 'expired',
-    discount: 10,
-    services: ['Tüm Hizmetler'],
-    targetAudience: 'all',
-    startDate: '1 Mar 2025',
-    endDate: '31 May 2025',
-    maxUsage: 60,
-    usageCount: 58,
-    viewCount: 892,
-    earning: 21750,
-    potentialEarning: 22500,
-    emoji: '🌸',
-    dailyUsage: [4, 5, 3, 4, 5, 6, 4, 3, 5, 4, 3, 2, 4, 5],
-    createdAt: '20 Şub 2025',
-  },
-];
-
+// ─── SABİT LİSTELER ─────────────────────────────────────────
 const DUMMY_SERVICES = [
   'Balayage', 'Ombre', 'Saç Boyama', 'Keratin Bakım',
   'Protein Bakım', 'Wolf Cut', 'Klasik Kesim', 'Fön', 'Perma',
@@ -177,6 +82,15 @@ const audienceConfig: Record<TargetAudience, { label: string; icon: string }> = 
   new: { label: 'Yeni Müşteriler', icon: 'person-add-outline' },
   loyal: { label: 'Sadık Müşteriler', icon: 'heart-outline' },
   passive: { label: 'Pasif Müşteriler', icon: 'time-outline' },
+};
+
+// YYYY-MM-DD to "12 Haz 2026" format
+const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
+const formatDisplayDate = (dateObj: Date) => {
+  const d = dateObj.getDate();
+  const m = TR_MONTHS_SHORT[dateObj.getMonth()];
+  const y = dateObj.getFullYear();
+  return `${d} ${m} ${y}`;
 };
 
 // ─── MİNİ ÇUBUK GRAFİK ─────────────────────────────────────
@@ -273,26 +187,26 @@ function CampaignCard({ campaign, onPress, onToggle }: {
             <Text style={cardStyles.discountLabel}>indirim</Text>
             <View style={cardStyles.discountDivider} />
             <Ionicons name="calendar-outline" size={12} color={COLORS.textMuted} />
-            <Text style={cardStyles.dateText}>{campaign.startDate} — {campaign.endDate}</Text>
+            <Text style={cardStyles.dateText}>{formatDisplayDate(new Date(campaign.startDate))} — {formatDisplayDate(new Date(campaign.endDate))}</Text>
           </View>
 
           {/* İstatistikler */}
           <View style={cardStyles.statsRow}>
             <View style={cardStyles.statItem}>
               <Ionicons name="eye-outline" size={13} color={COLORS.textMuted} />
-              <Text style={cardStyles.statValue}>{campaign.viewCount}</Text>
+              <Text style={cardStyles.statValue}>{campaign.viewCount || 0}</Text>
               <Text style={cardStyles.statLabel}>görüntü</Text>
             </View>
             <View style={cardStyles.statDivider} />
             <View style={cardStyles.statItem}>
               <Ionicons name="people-outline" size={13} color={COLORS.textMuted} />
-              <Text style={cardStyles.statValue}>{campaign.usageCount}</Text>
+              <Text style={cardStyles.statValue}>{campaign.usageCount || 0}</Text>
               <Text style={cardStyles.statLabel}>kullanım</Text>
             </View>
             <View style={cardStyles.statDivider} />
             <View style={cardStyles.statItem}>
               <Ionicons name="cash-outline" size={13} color="#34D399" />
-              <Text style={[cardStyles.statValue, { color: '#34D399' }]}>₺{campaign.earning.toLocaleString()}</Text>
+              <Text style={[cardStyles.statValue, { color: '#34D399' }]}>₺{(campaign.earning || 0).toLocaleString()}</Text>
               <Text style={cardStyles.statLabel}>kazanç</Text>
             </View>
           </View>
@@ -305,16 +219,8 @@ function CampaignCard({ campaign, onPress, onToggle }: {
                 backgroundColor: usageRate > 80 ? '#F87171' : usageRate > 50 ? '#FFB844' : '#34D399',
               }]} />
             </View>
-            <Text style={cardStyles.usageText}>{campaign.usageCount}/{campaign.maxUsage}</Text>
+            <Text style={cardStyles.usageText}>{campaign.usageCount || 0}/{campaign.maxUsage}</Text>
           </View>
-
-          {/* Mini grafik */}
-          {campaign.dailyUsage.length > 0 && (
-            <View style={cardStyles.chartRow}>
-              <Text style={cardStyles.chartLabel}>Günlük kullanım</Text>
-              <MiniBarChart data={campaign.dailyUsage} color={typeConf.color} />
-            </View>
-          )}
         </LinearGradient>
       </Animated.View>
     </TouchableOpacity>
@@ -376,8 +282,8 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
 
   const typeConf = campaignTypeConfig[campaign.type];
   const audienceConf = audienceConfig[campaign.targetAudience];
-  const usageRate = campaign.maxUsage > 0 ? (campaign.usageCount / campaign.maxUsage) * 100 : 0;
-  const conversionRate = campaign.viewCount > 0 ? ((campaign.usageCount / campaign.viewCount) * 100).toFixed(1) : '0';
+  const usageRate = campaign.maxUsage > 0 ? ((campaign.usageCount || 0) / campaign.maxUsage) * 100 : 0;
+  const conversionRate = (campaign.viewCount || 0) > 0 ? (((campaign.usageCount || 0) / campaign.viewCount) * 100).toFixed(1) : '0';
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
@@ -390,7 +296,6 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
         </TouchableOpacity>
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 60 }}>
-
           {/* Hero */}
           <LinearGradient
             colors={[typeConf.color + '44', typeConf.color + '22']}
@@ -412,12 +317,11 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
           </LinearGradient>
 
           <View style={detailStyles.content}>
-
             {/* Ana istatistikler */}
             <View style={detailStyles.mainStats}>
               {[
-                { label: 'Görüntülenme', value: campaign.viewCount.toLocaleString(), icon: 'eye-outline', color: COLORS.primary },
-                { label: 'Kullanım', value: campaign.usageCount.toString(), icon: 'people-outline', color: '#60A5FA' },
+                { label: 'Görüntülenme', value: (campaign.viewCount || 0).toLocaleString(), icon: 'eye-outline', color: COLORS.primary },
+                { label: 'Kullanım', value: (campaign.usageCount || 0).toString(), icon: 'people-outline', color: '#60A5FA' },
                 { label: 'Dönüşüm', value: `%${conversionRate}`, icon: 'trending-up-outline', color: '#FFB844' },
               ].map((stat) => (
                 <View key={stat.label} style={detailStyles.mainStatItem}>
@@ -436,54 +340,32 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
               <View style={detailStyles.earningRow}>
                 <View style={detailStyles.earningItem}>
                   <Text style={detailStyles.earningLabel}>Kampanyadan Kazanç</Text>
-                  <Text style={[detailStyles.earningValue, { color: '#34D399' }]}>₺{campaign.earning.toLocaleString()}</Text>
+                  <Text style={[detailStyles.earningValue, { color: '#34D399' }]}>₺{(campaign.earning || 0).toLocaleString()}</Text>
                 </View>
                 <View style={detailStyles.earningDivider} />
                 <View style={detailStyles.earningItem}>
                   <Text style={detailStyles.earningLabel}>Potansiyel Kazanç</Text>
-                  <Text style={[detailStyles.earningValue, { color: COLORS.primary }]}>₺{campaign.potentialEarning.toLocaleString()}</Text>
+                  <Text style={[detailStyles.earningValue, { color: COLORS.primary }]}>₺{(campaign.potentialEarning || 0).toLocaleString()}</Text>
                 </View>
               </View>
               <View style={detailStyles.earningCompare}>
                 <View style={detailStyles.earningBar}>
                   <View style={[detailStyles.earningBarFill, {
-                    width: `${(campaign.earning / campaign.potentialEarning) * 100}%` as any,
+                    width: `${campaign.potentialEarning > 0 ? ((campaign.earning || 0) / campaign.potentialEarning) * 100 : 0}%` as any,
                     backgroundColor: '#34D399',
                   }]} />
                 </View>
                 <Text style={detailStyles.earningRatio}>
-                  %{((campaign.earning / campaign.potentialEarning) * 100).toFixed(0)} gerçekleşti
+                  %{campaign.potentialEarning > 0 ? (((campaign.earning || 0) / campaign.potentialEarning) * 100).toFixed(0) : 0} gerçekleşti
                 </Text>
               </View>
             </View>
-
-            {/* Günlük kullanım grafiği */}
-            {campaign.dailyUsage.length > 0 && (
-              <View style={detailStyles.chartCard}>
-                <Text style={detailStyles.sectionTitle}>📈 Günlük Kullanım</Text>
-                <View style={detailStyles.barChart}>
-                  {campaign.dailyUsage.map((val, i) => {
-                    const max = Math.max(...campaign.dailyUsage, 1);
-                    return (
-                      <View key={i} style={detailStyles.barWrapper}>
-                        <View style={[detailStyles.bar, {
-                          height: Math.max((val / max) * 80, 4),
-                          backgroundColor: typeConf.color,
-                          opacity: 0.5 + (i / campaign.dailyUsage.length) * 0.5,
-                        }]} />
-                        <Text style={detailStyles.barLabel}>{val}</Text>
-                      </View>
-                    );
-                  })}
-                </View>
-              </View>
-            )}
 
             {/* Kullanım oranı */}
             <View style={detailStyles.usageCard}>
               <Text style={detailStyles.sectionTitle}>📊 Kullanım Durumu</Text>
               <View style={detailStyles.usageInfo}>
-                <Text style={detailStyles.usageNumbers}>{campaign.usageCount} / {campaign.maxUsage} kullanım</Text>
+                <Text style={detailStyles.usageNumbers}>{campaign.usageCount || 0} / {campaign.maxUsage} kullanım</Text>
                 <Text style={detailStyles.usagePercent}>%{usageRate.toFixed(0)}</Text>
               </View>
               <View style={detailStyles.usageBar}>
@@ -499,8 +381,8 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
               <Text style={detailStyles.sectionTitle}>📋 Kampanya Bilgileri</Text>
               {[
                 { icon: 'pricetag-outline', label: 'İndirim', value: `%${campaign.discount}`, color: COLORS.primary },
-                { icon: 'calendar-outline', label: 'Başlangıç', value: campaign.startDate, color: COLORS.textMuted },
-                { icon: 'calendar-outline', label: 'Bitiş', value: campaign.endDate, color: COLORS.textMuted },
+                { icon: 'calendar-outline', label: 'Başlangıç', value: formatDisplayDate(new Date(campaign.startDate)), color: COLORS.textMuted },
+                { icon: 'calendar-outline', label: 'Bitiş', value: formatDisplayDate(new Date(campaign.endDate)), color: COLORS.textMuted },
                 { icon: audienceConf.icon, label: 'Hedef Kitle', value: audienceConf.label, color: COLORS.textMuted },
               ].map((item, index, arr) => (
                 <View key={item.label}>
@@ -520,7 +402,7 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
                 <Text style={detailStyles.infoLabel}>Hizmetler</Text>
               </View>
               <View style={detailStyles.servicesRow}>
-                {campaign.services.map((s) => (
+                {(campaign.services || []).map((s) => (
                   <View key={s} style={detailStyles.serviceChip}>
                     <Text style={detailStyles.serviceChipText}>{s}</Text>
                   </View>
@@ -533,10 +415,6 @@ function CampaignDetailModal({ visible, campaign, onClose, onDelete, onDuplicate
               <TouchableOpacity style={detailStyles.duplicateBtn} onPress={onDuplicate}>
                 <Ionicons name="copy-outline" size={16} color={COLORS.primary} />
                 <Text style={detailStyles.duplicateBtnText}>Kopyala</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={detailStyles.shareBtn}>
-                <Ionicons name="share-outline" size={16} color="#60A5FA" />
-                <Text style={detailStyles.shareBtnText}>Paylaş</Text>
               </TouchableOpacity>
               <TouchableOpacity style={detailStyles.deleteBtn} onPress={onDelete}>
                 <Ionicons name="trash-outline" size={16} color="#F87171" />
@@ -606,10 +484,11 @@ const detailStyles = StyleSheet.create({
 });
 
 // ─── KAMPANYA OLUŞTUR MODALI ───────────────────────────────
-function CreateCampaignModal({ visible, onClose, onCreate }: {
+function CreateCampaignModal({ visible, onClose, onCreate, initialData }: {
   visible: boolean;
   onClose: () => void;
-  onCreate: (campaign: Campaign) => void;
+  onCreate: (campaignData: Omit<Campaign, 'id' | 'createdAt' | 'hairdresserId'>) => void;
+  initialData?: any; // Hızlı Kampanya için önceden doldurulacak veri
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [title, setTitle] = useState('');
@@ -618,8 +497,15 @@ function CreateCampaignModal({ visible, onClose, onCreate }: {
   const [discount, setDiscount] = useState('');
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
   const [targetAudience, setTargetAudience] = useState<TargetAudience>('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+
+  // Tarih Objeleri (Picker için)
+  const [startDate, setStartDate] = useState(new Date());
+  const [endDate, setEndDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)); // 1 Hafta sonrası
+
+  // Picker Gösterim Kontrolü
+  const [showPicker, setShowPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'start' | 'end'>('start');
+
   const [maxUsage, setMaxUsage] = useState('');
   const [selectedEmoji, setSelectedEmoji] = useState('🎯');
   const slideAnim = useRef(new Animated.Value(height)).current;
@@ -630,14 +516,24 @@ function CreateCampaignModal({ visible, onClose, onCreate }: {
     if (visible) {
       setStep(1);
       Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
+
+      // Hızlı Kampanya'dan geliyorsa verileri doldur
+      if (initialData) {
+        setTitle(initialData.title || '');
+        setDiscount(initialData.discount || '');
+        setType(initialData.type || 'discount');
+        setSelectedEmoji(initialData.emoji || '🔥');
+      } else {
+        // Normal Kampanya ise sıfırla
+        setTitle(''); setDescription(''); setType('discount'); setDiscount('');
+        setSelectedServices([]); setTargetAudience('all');
+        setStartDate(new Date()); setEndDate(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+        setMaxUsage(''); setSelectedEmoji('🎯');
+      }
     } else {
       Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start();
-      // Reset
-      setTitle(''); setDescription(''); setType('discount'); setDiscount('');
-      setSelectedServices([]); setTargetAudience('all'); setStartDate('');
-      setEndDate(''); setMaxUsage(''); setSelectedEmoji('🎯');
     }
-  }, [visible]);
+  }, [visible, initialData]);
 
   const toggleService = (service: string) => {
     setSelectedServices(prev =>
@@ -645,28 +541,38 @@ function CreateCampaignModal({ visible, onClose, onCreate }: {
     );
   };
 
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') setShowPicker(false);
+    if (selectedDate) {
+      if (pickerMode === 'start') setStartDate(selectedDate);
+      else setEndDate(selectedDate);
+    }
+  };
+
   const handleCreate = () => {
     if (!title || !discount || selectedServices.length === 0) {
       Alert.alert('Eksik Bilgi', 'Başlık, indirim oranı ve en az 1 hizmet seçin.');
       return;
     }
-    const newCampaign: Campaign = {
-      id: Date.now().toString(),
-      title, description, type,
-      status: 'draft',
+
+    onCreate({
+      title,
+      description,
+      type,
+      status: 'active', // Yeni kampanya varsayılan aktif
       discount: parseInt(discount),
       services: selectedServices,
       targetAudience,
-      startDate: startDate || 'Belirtilmedi',
-      endDate: endDate || 'Belirtilmedi',
+      startDate: startDate.toISOString().split('T')[0], // YYYY-MM-DD
+      endDate: endDate.toISOString().split('T')[0],
       maxUsage: parseInt(maxUsage) || 50,
-      usageCount: 0, viewCount: 0, earning: 0,
-      potentialEarning: parseInt(maxUsage) * parseInt(discount) * 10 || 0,
+      usageCount: 0,
+      viewCount: 0,
+      earning: 0,
+      potentialEarning: parseInt(maxUsage || '50') * parseInt(discount) * 10 || 0,
       emoji: selectedEmoji,
       dailyUsage: [],
-      createdAt: new Date().toLocaleDateString('tr-TR'),
-    };
-    onCreate(newCampaign);
+    });
     onClose();
   };
 
@@ -678,274 +584,292 @@ function CreateCampaignModal({ visible, onClose, onCreate }: {
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      <View style={createStyles.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
-        <Animated.View style={[createStyles.container, { transform: [{ translateY: slideAnim }] }]}>
-          <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={createStyles.overlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+          <Animated.View style={[createStyles.container, { transform: [{ translateY: slideAnim }] }]}>
+            <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
 
-          <View style={createStyles.handle} />
+            <View style={createStyles.handle} />
 
-          {/* Header */}
-          <View style={createStyles.header}>
-            <TouchableOpacity
-              style={createStyles.backBtn}
-              onPress={() => step > 1 ? setStep(prev => (prev - 1) as 1 | 2 | 3) : onClose()}
+            {/* Header */}
+            <View style={createStyles.header}>
+              <TouchableOpacity
+                style={createStyles.backBtn}
+                onPress={() => step > 1 ? setStep(prev => (prev - 1) as 1 | 2 | 3) : onClose()}
+              >
+                <Ionicons name={step === 1 ? 'close' : 'arrow-back'} size={22} color={COLORS.textPrimary} />
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={createStyles.headerTitle}>
+                  {initialData ? 'Hızlı Kampanya' : 'Kampanya Oluştur'}
+                </Text>
+                <Text style={createStyles.headerStep}>Adım {step}/3</Text>
+              </View>
+              <View style={createStyles.stepDots}>
+                {[1, 2, 3].map(s => (
+                  <View key={s} style={[createStyles.stepDot, step >= s && createStyles.stepDotActive]} />
+                ))}
+              </View>
+            </View>
+
+            <ScrollView
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={createStyles.scrollContent}
+              keyboardShouldPersistTaps="handled"
             >
-              <Ionicons name={step === 1 ? 'close' : 'arrow-back'} size={22} color={COLORS.textPrimary} />
-            </TouchableOpacity>
-            <View style={{ alignItems: 'center', flex: 1 }}>
-              <Text style={createStyles.headerTitle}>Kampanya Oluştur</Text>
-              <Text style={createStyles.headerStep}>Adım {step}/3</Text>
-            </View>
-            <View style={createStyles.stepDots}>
-              {[1, 2, 3].map(s => (
-                <View key={s} style={[createStyles.stepDot, step >= s && createStyles.stepDotActive]} />
-              ))}
-            </View>
-          </View>
+              {/* ── ADIM 1: TEMEL BİLGİLER ── */}
+              {step === 1 && (
+                <View style={createStyles.stepContent}>
+                  <Text style={createStyles.stepTitle}>Temel Bilgiler</Text>
 
-          <ScrollView
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={createStyles.scrollContent}
-            keyboardShouldPersistTaps="handled"
-          >
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Kampanya İkonu</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
+                        {EMOJIS.map((e) => (
+                          <TouchableOpacity
+                            key={e}
+                            style={[createStyles.emojiBtn, selectedEmoji === e && createStyles.emojiBtnActive]}
+                            onPress={() => setSelectedEmoji(e)}
+                          >
+                            <Text style={{ fontSize: 24 }}>{e}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </ScrollView>
+                  </View>
 
-            {/* ── ADIM 1: TEMEL BİLGİLER ── */}
-            {step === 1 && (
-              <View style={createStyles.stepContent}>
-                <Text style={createStyles.stepTitle}>Temel Bilgiler</Text>
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Kampanya Başlığı *</Text>
+                    <TextInput
+                      style={createStyles.input}
+                      value={title}
+                      onChangeText={setTitle}
+                      placeholder="Örn: Yaz İndirimi, İlk Ziyaret..."
+                      placeholderTextColor={COLORS.textMuted}
+                      maxLength={50}
+                    />
+                  </View>
 
-                {/* Emoji seç */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Kampanya İkonu</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: 'row', gap: SPACING.sm }}>
-                      {EMOJIS.map((e) => (
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Açıklama</Text>
+                    <TextInput
+                      style={[createStyles.input, { minHeight: 70, textAlignVertical: 'top' }]}
+                      value={description}
+                      onChangeText={setDescription}
+                      placeholder="Kampanya hakkında kısa açıklama..."
+                      placeholderTextColor={COLORS.textMuted}
+                      multiline
+                      maxLength={150}
+                    />
+                  </View>
+
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Kampanya Türü *</Text>
+                    <View style={createStyles.typeGrid}>
+                      {(Object.entries(campaignTypeConfig) as [CampaignType, any][]).map(([key, conf]) => (
                         <TouchableOpacity
-                          key={e}
-                          style={[createStyles.emojiBtn, selectedEmoji === e && createStyles.emojiBtnActive]}
-                          onPress={() => setSelectedEmoji(e)}
+                          key={key}
+                          style={[createStyles.typeCard, type === key && createStyles.typeCardActive, type === key && { borderColor: conf.color }]}
+                          onPress={() => setType(key)}
                         >
-                          <Text style={{ fontSize: 24 }}>{e}</Text>
+                          <Ionicons name={conf.icon as any} size={20} color={type === key ? conf.color : COLORS.textMuted} />
+                          <Text style={[createStyles.typeLabel, type === key && { color: conf.color }]}>{conf.label}</Text>
                         </TouchableOpacity>
                       ))}
                     </View>
-                  </ScrollView>
-                </View>
-
-                {/* Başlık */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Kampanya Başlığı *</Text>
-                  <TextInput
-                    style={createStyles.input}
-                    value={title}
-                    onChangeText={setTitle}
-                    placeholder="Örn: Yaz İndirimi, İlk Ziyaret..."
-                    placeholderTextColor={COLORS.textMuted}
-                    maxLength={50}
-                  />
-                </View>
-
-                {/* Açıklama */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Açıklama</Text>
-                  <TextInput
-                    style={[createStyles.input, { minHeight: 70, textAlignVertical: 'top' }]}
-                    value={description}
-                    onChangeText={setDescription}
-                    placeholder="Kampanya hakkında kısa açıklama..."
-                    placeholderTextColor={COLORS.textMuted}
-                    multiline
-                    maxLength={150}
-                  />
-                </View>
-
-                {/* Kampanya türü */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Kampanya Türü *</Text>
-                  <View style={createStyles.typeGrid}>
-                    {(Object.entries(campaignTypeConfig) as [CampaignType, any][]).map(([key, conf]) => (
-                      <TouchableOpacity
-                        key={key}
-                        style={[createStyles.typeCard, type === key && createStyles.typeCardActive, type === key && { borderColor: conf.color }]}
-                        onPress={() => setType(key)}
-                      >
-                        <Ionicons name={conf.icon as any} size={20} color={type === key ? conf.color : COLORS.textMuted} />
-                        <Text style={[createStyles.typeLabel, type === key && { color: conf.color }]}>{conf.label}</Text>
-                      </TouchableOpacity>
-                    ))}
                   </View>
-                </View>
 
-                {/* İndirim oranı */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>İndirim Oranı (%) *</Text>
-                  <View style={createStyles.discountInput}>
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>İndirim Oranı (%) *</Text>
+                    <View style={createStyles.discountInput}>
+                      <TextInput
+                        style={createStyles.discountInputField}
+                        value={discount}
+                        onChangeText={(t) => setDiscount(t.replace(/\D/g, ''))}
+                        placeholder="0"
+                        placeholderTextColor={COLORS.textMuted}
+                        keyboardType="numeric"
+                        maxLength={2}
+                      />
+                      <Text style={createStyles.discountSymbol}>%</Text>
+                    </View>
+                  </View>
+
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Maksimum Kullanım</Text>
                     <TextInput
-                      style={createStyles.discountInputField}
-                      value={discount}
-                      onChangeText={(t) => setDiscount(t.replace(/\D/g, ''))}
-                      placeholder="0"
+                      style={createStyles.input}
+                      value={maxUsage}
+                      onChangeText={(t) => setMaxUsage(t.replace(/\D/g, ''))}
+                      placeholder="50"
                       placeholderTextColor={COLORS.textMuted}
                       keyboardType="numeric"
-                      maxLength={2}
                     />
-                    <Text style={createStyles.discountSymbol}>%</Text>
                   </View>
                 </View>
+              )}
 
-                {/* Max kullanım */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Maksimum Kullanım</Text>
-                  <TextInput
-                    style={createStyles.input}
-                    value={maxUsage}
-                    onChangeText={(t) => setMaxUsage(t.replace(/\D/g, ''))}
-                    placeholder="50"
-                    placeholderTextColor={COLORS.textMuted}
-                    keyboardType="numeric"
-                  />
-                </View>
-              </View>
-            )}
+              {/* ── ADIM 2: HİZMET & KİTLE ── */}
+              {step === 2 && (
+                <View style={createStyles.stepContent}>
+                  <Text style={createStyles.stepTitle}>Hizmet & Hedef Kitle</Text>
 
-            {/* ── ADIM 2: HİZMET & KİTLE ── */}
-            {step === 2 && (
-              <View style={createStyles.stepContent}>
-                <Text style={createStyles.stepTitle}>Hizmet & Hedef Kitle</Text>
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Hizmetler * (birden fazla seçebilirsiniz)</Text>
+                    <View style={createStyles.serviceGrid}>
+                      {DUMMY_SERVICES.map((service) => (
+                        <TouchableOpacity
+                          key={service}
+                          style={[createStyles.serviceChip, selectedServices.includes(service) && createStyles.serviceChipActive]}
+                          onPress={() => toggleService(service)}
+                        >
+                          {selectedServices.includes(service) && (
+                            <Ionicons name="checkmark" size={12} color={COLORS.primary} />
+                          )}
+                          <Text style={[createStyles.serviceChipText, selectedServices.includes(service) && createStyles.serviceChipTextActive]}>
+                            {service}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
 
-                {/* Hizmet seç */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Hizmetler * (birden fazla seçebilirsiniz)</Text>
-                  <View style={createStyles.serviceGrid}>
-                    {DUMMY_SERVICES.map((service) => (
+                  <View style={createStyles.field}>
+                    <Text style={createStyles.fieldLabel}>Hedef Kitle</Text>
+                    {(Object.entries(audienceConfig) as [TargetAudience, any][]).map(([key, conf]) => (
                       <TouchableOpacity
-                        key={service}
-                        style={[createStyles.serviceChip, selectedServices.includes(service) && createStyles.serviceChipActive]}
-                        onPress={() => toggleService(service)}
+                        key={key}
+                        style={[createStyles.audienceCard, targetAudience === key && createStyles.audienceCardActive]}
+                        onPress={() => setTargetAudience(key)}
                       >
-                        {selectedServices.includes(service) && (
-                          <Ionicons name="checkmark" size={12} color={COLORS.primary} />
-                        )}
-                        <Text style={[createStyles.serviceChipText, selectedServices.includes(service) && createStyles.serviceChipTextActive]}>
-                          {service}
+                        <View style={[createStyles.audienceIcon, targetAudience === key && { backgroundColor: COLORS.primary + '33' }]}>
+                          <Ionicons name={conf.icon as any} size={18} color={targetAudience === key ? COLORS.primary : COLORS.textMuted} />
+                        </View>
+                        <Text style={[createStyles.audienceLabel, targetAudience === key && createStyles.audienceLabelActive]}>
+                          {conf.label}
                         </Text>
+                        {targetAudience === key && (
+                          <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                        )}
                       </TouchableOpacity>
                     ))}
                   </View>
                 </View>
+              )}
 
-                {/* Hedef kitle */}
-                <View style={createStyles.field}>
-                  <Text style={createStyles.fieldLabel}>Hedef Kitle</Text>
-                  {(Object.entries(audienceConfig) as [TargetAudience, any][]).map(([key, conf]) => (
-                    <TouchableOpacity
-                      key={key}
-                      style={[createStyles.audienceCard, targetAudience === key && createStyles.audienceCardActive]}
-                      onPress={() => setTargetAudience(key)}
-                    >
-                      <View style={[createStyles.audienceIcon, targetAudience === key && { backgroundColor: COLORS.primary + '33' }]}>
-                        <Ionicons name={conf.icon as any} size={18} color={targetAudience === key ? COLORS.primary : COLORS.textMuted} />
-                      </View>
-                      <Text style={[createStyles.audienceLabel, targetAudience === key && createStyles.audienceLabelActive]}>
-                        {conf.label}
-                      </Text>
-                      {targetAudience === key && (
-                        <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+              {/* ── ADIM 3: TARİH & ÖZET ── */}
+              {step === 3 && (
+                <View style={createStyles.stepContent}>
+                  <Text style={createStyles.stepTitle}>Tarih & Özet</Text>
+
+                  {/* Tarihler (Picker kullanarak) */}
+                  <View style={createStyles.dateRow}>
+                    <View style={[createStyles.field, { flex: 1 }]}>
+                      <Text style={createStyles.fieldLabel}>Başlangıç Tarihi</Text>
+                      <TouchableOpacity
+                        style={createStyles.datePickerBtn}
+                        onPress={() => { setPickerMode('start'); setShowPicker(true); }}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
+                        <Text style={createStyles.datePickerText}>{formatDisplayDate(startDate)}</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={[createStyles.field, { flex: 1 }]}>
+                      <Text style={createStyles.fieldLabel}>Bitiş Tarihi</Text>
+                      <TouchableOpacity
+                        style={createStyles.datePickerBtn}
+                        onPress={() => { setPickerMode('end'); setShowPicker(true); }}
+                      >
+                        <Ionicons name="calendar-outline" size={16} color={COLORS.textMuted} />
+                        <Text style={createStyles.datePickerText}>{formatDisplayDate(endDate)}</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Platform spesifik Picker (iOS'da butonlarla kapatılır) */}
+                  {showPicker && (
+                    <View style={Platform.OS === 'ios' && createStyles.iosPickerContainer}>
+                      {Platform.OS === 'ios' && (
+                        <View style={createStyles.iosPickerHeader}>
+                          <TouchableOpacity onPress={() => setShowPicker(false)}>
+                            <Text style={createStyles.iosPickerDoneText}>Bitti</Text>
+                          </TouchableOpacity>
+                        </View>
                       )}
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-            )}
-
-            {/* ── ADIM 3: TARİH & ÖZET ── */}
-            {step === 3 && (
-              <View style={createStyles.stepContent}>
-                <Text style={createStyles.stepTitle}>Tarih & Özet</Text>
-
-                {/* Tarihler */}
-                <View style={createStyles.dateRow}>
-                  <View style={[createStyles.field, { flex: 1 }]}>
-                    <Text style={createStyles.fieldLabel}>Başlangıç Tarihi</Text>
-                    <TextInput
-                      style={createStyles.input}
-                      value={startDate}
-                      onChangeText={setStartDate}
-                      placeholder="1 Haz 2025"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                  </View>
-                  <View style={[createStyles.field, { flex: 1 }]}>
-                    <Text style={createStyles.fieldLabel}>Bitiş Tarihi</Text>
-                    <TextInput
-                      style={createStyles.input}
-                      value={endDate}
-                      onChangeText={setEndDate}
-                      placeholder="30 Haz 2025"
-                      placeholderTextColor={COLORS.textMuted}
-                    />
-                  </View>
-                </View>
-
-                {/* Özet */}
-                <View style={createStyles.summaryCard}>
-                  <Text style={createStyles.summaryTitle}>Kampanya Özeti</Text>
-                  <View style={createStyles.summaryHeader}>
-                    <Text style={{ fontSize: 36 }}>{selectedEmoji}</Text>
-                    <View style={{ flex: 1 }}>
-                      <Text style={createStyles.summaryName}>{title || 'Kampanya Adı'}</Text>
-                      <Text style={createStyles.summaryDesc}>{description || 'Açıklama yok'}</Text>
+                      <DateTimePicker
+                        value={pickerMode === 'start' ? startDate : endDate}
+                        mode="date"
+                        display="spinner"
+                        themeVariant="dark"
+                        onChange={handleDateChange}
+                        minimumDate={pickerMode === 'end' ? startDate : new Date()}
+                      />
                     </View>
-                  </View>
-                  {[
-                    { label: 'Tür', value: campaignTypeConfig[type].label },
-                    { label: 'İndirim', value: `%${discount || 0}` },
-                    { label: 'Maks. Kullanım', value: maxUsage || '50' },
-                    { label: 'Hedef', value: audienceConfig[targetAudience].label },
-                    { label: 'Hizmetler', value: selectedServices.join(', ') || 'Seçilmedi' },
-                  ].map((item) => (
-                    <View key={item.label} style={createStyles.summaryRow}>
-                      <Text style={createStyles.summaryLabel}>{item.label}</Text>
-                      <Text style={createStyles.summaryValue} numberOfLines={1}>{item.value}</Text>
-                    </View>
-                  ))}
-                </View>
-              </View>
-            )}
-          </ScrollView>
+                  )}
 
-          {/* Footer */}
-          <View style={createStyles.footer}>
-            <TouchableOpacity
-              style={[createStyles.nextBtn, !canNext() && createStyles.nextBtnDisabled]}
-              onPress={() => {
-                if (step < 3) setStep(prev => (prev + 1) as 1 | 2 | 3);
-                else handleCreate();
-              }}
-              disabled={!canNext()}
-            >
-              <LinearGradient
-                colors={canNext() ? [COLORS.primary, COLORS.primaryDark] : ['#333', '#222']}
-                start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
-                style={createStyles.nextBtnGradient}
+                  <View style={createStyles.summaryCard}>
+                    <Text style={createStyles.summaryTitle}>Kampanya Özeti</Text>
+                    <View style={createStyles.summaryHeader}>
+                      <Text style={{ fontSize: 36 }}>{selectedEmoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={createStyles.summaryName}>{title || 'Kampanya Adı'}</Text>
+                        <Text style={createStyles.summaryDesc}>{description || 'Açıklama yok'}</Text>
+                      </View>
+                    </View>
+                    {[
+                      { label: 'Tür', value: campaignTypeConfig[type].label },
+                      { label: 'İndirim', value: `%${discount || 0}` },
+                      { label: 'Maks. Kullanım', value: maxUsage || '50' },
+                      { label: 'Hedef', value: audienceConfig[targetAudience].label },
+                      { label: 'Hizmetler', value: selectedServices.join(', ') || 'Seçilmedi' },
+                    ].map((item) => (
+                      <View key={item.label} style={createStyles.summaryRow}>
+                        <Text style={createStyles.summaryLabel}>{item.label}</Text>
+                        <Text style={createStyles.summaryValue} numberOfLines={1}>{item.value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Footer */}
+            <View style={createStyles.footer}>
+              <TouchableOpacity
+                style={[createStyles.nextBtn, !canNext() && createStyles.nextBtnDisabled]}
+                onPress={() => {
+                  if (step < 3) setStep(prev => (prev + 1) as 1 | 2 | 3);
+                  else handleCreate();
+                }}
+                disabled={!canNext()}
               >
-                <Text style={createStyles.nextBtnText}>
-                  {step < 3 ? 'Devam Et' : 'Taslak Olarak Kaydet'}
-                </Text>
-                <Ionicons name={step < 3 ? 'arrow-forward' : 'checkmark-circle'} size={18} color={COLORS.white} />
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
-        </Animated.View>
-      </View>
+                <LinearGradient
+                  colors={canNext() ? [COLORS.primary, COLORS.primaryDark] : ['#333', '#222']}
+                  start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
+                  style={createStyles.nextBtnGradient}
+                >
+                  <Text style={createStyles.nextBtnText}>
+                    {step < 3 ? 'Devam Et' : 'Oluştur ve Yayınla'}
+                  </Text>
+                  <Ionicons name={step < 3 ? 'arrow-forward' : 'checkmark-circle'} size={18} color={COLORS.white} />
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </Animated.View>
+        </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
 const createStyles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: '94%', overflow: 'hidden' },
+  container: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.90, overflow: 'hidden' },
   handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
   header: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, paddingTop: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   backBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', justifyContent: 'center', alignItems: 'center' },
@@ -980,6 +904,11 @@ const createStyles = StyleSheet.create({
   audienceLabel: { flex: 1, fontSize: FONTS.regular, color: COLORS.textMuted, fontWeight: '500' },
   audienceLabelActive: { color: COLORS.primary, fontWeight: '700' },
   dateRow: { flexDirection: 'row', gap: SPACING.md },
+  datePickerBtn: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', borderRadius: RADIUS.lg, padding: SPACING.md },
+  datePickerText: { fontSize: FONTS.regular, color: COLORS.white },
+  iosPickerContainer: { backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: RADIUS.lg, marginTop: SPACING.sm, overflow: 'hidden' },
+  iosPickerHeader: { alignItems: 'flex-end', padding: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.05)' },
+  iosPickerDoneText: { color: COLORS.primary, fontWeight: 'bold', fontSize: FONTS.regular },
   summaryCard: { backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.xl, padding: SPACING.lg, borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm },
   summaryTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary, marginBottom: SPACING.sm },
   summaryHeader: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, marginBottom: SPACING.sm },
@@ -998,57 +927,136 @@ const createStyles = StyleSheet.create({
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function CampaignScreen() {
   const router = useRouter();
-  const [campaigns, setCampaigns] = useState(DUMMY_CAMPAIGNS);
+  const { user } = useAuthStore();
+
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [loading, setLoading] = useState(true);
+
   const [activeTab, setActiveTab] = useState<CampaignStatus | 'all'>('all');
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
+  const [quickCreateData, setQuickCreateData] = useState<any>(null);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(0)).current;
 
+  // ─── FIRESTORE CANLI DİNLEME ───
   useEffect(() => {
+    if (!user?.uid) return;
+
+    const q = query(
+      collection(db, 'campaigns'),
+      where('hairdresserId', '==', user.uid),
+      orderBy('createdAt', 'desc')
+    );
+
+    const unsub = onSnapshot(q, (snap) => {
+      const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Campaign));
+      setCampaigns(data);
+      setLoading(false);
+    });
+
     Animated.parallel([
       Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }),
       Animated.timing(contentOpacity, { toValue: 1, duration: 500, useNativeDriver: true }),
     ]).start();
-  }, []);
 
+    return () => unsub();
+  }, [user?.uid]);
+
+  // ─── KAMPANYA OLUŞTURMA & BİLDİRİM ───
+  const handleCreateCampaign = async (campaignData: Omit<Campaign, 'id' | 'createdAt' | 'hairdresserId'>) => {
+    if (!user?.uid) return;
+    try {
+      // 1. Kampanyayı oluştur
+      const campaignRef = await addDoc(collection(db, 'campaigns'), {
+        ...campaignData,
+        hairdresserId: user.uid,
+        createdAt: serverTimestamp(),
+      });
+
+      // 2. Takipçilere Bildirim Gitmesi İçin 'notifications' Koleksiyonuna Tetikleyici Yaz
+      await addDoc(collection(db, 'notifications'), {
+        type: 'campaign_created',
+        hairdresserId: user.uid,
+        campaignId: campaignRef.id,
+        title: 'Yeni Kampanya! 🎉',
+        message: `${campaignData.title} fırsatını kaçırmayın!`,
+        targetAudience: campaignData.targetAudience,
+        createdAt: serverTimestamp(),
+      });
+
+      Alert.alert('Başarılı', 'Kampanya oluşturuldu ve müşterilerinize bildirim gönderildi!');
+    } catch (e) {
+      Alert.alert('Hata', 'Kampanya oluşturulamadı.');
+    }
+  };
+
+  // ─── DURUM DEĞİŞTİRME ───
+  const handleToggle = async (id: string, currentStatus: string) => {
+    try {
+      const newStatus = currentStatus === 'active' ? 'draft' : 'active';
+      await updateDoc(doc(db, 'campaigns', id), { status: newStatus });
+    } catch (e) {
+      Alert.alert('Hata', 'Kampanya durumu güncellenemedi.');
+    }
+  };
+
+  // ─── SİLME ───
+  const handleDelete = async (id: string) => {
+    try {
+      await deleteDoc(doc(db, 'campaigns', id));
+      setShowDetail(false);
+    } catch (e) {
+      Alert.alert('Hata', 'Kampanya silinemedi.');
+    }
+  };
+
+  // ─── KOPYALAMA ───
+  const handleDuplicate = async (campaign: Campaign) => {
+    if (!user?.uid) return;
+    try {
+      const { id, createdAt, ...rest } = campaign;
+      await addDoc(collection(db, 'campaigns'), {
+        ...rest,
+        title: `${campaign.title} (Kopya)`,
+        status: 'draft',
+        usageCount: 0,
+        viewCount: 0,
+        earning: 0,
+        dailyUsage: [],
+        createdAt: serverTimestamp()
+      });
+      setShowDetail(false);
+      Alert.alert('Başarılı', 'Kampanya taslak olarak kopyalandı.');
+    } catch (e) {
+      Alert.alert('Hata', 'Kopyalama başarısız.');
+    }
+  };
+
+  const handleOpenQuickCreate = () => {
+    // Hızlı Kampanya için yapay zeka önerisi gibi önceden doldurulmuş data gönderiyoruz
+    setQuickCreateData({
+      title: 'Hafta Sonu Fırsatı',
+      discount: '20',
+      type: 'discount',
+      emoji: '🔥'
+    });
+    setShowCreate(true);
+  };
+
+  const handleOpenNormalCreate = () => {
+    setQuickCreateData(null); // Normal oluşturma tertemiz ekranla başlar
+    setShowCreate(true);
+  };
+
+  // ─── HESAPLAMALAR ───
   const filteredCampaigns = campaigns.filter(c => activeTab === 'all' || c.status === activeTab);
-
-  const totalEarning = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + c.earning, 0);
-  const totalUsage = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + c.usageCount, 0);
-  const totalViews = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + c.viewCount, 0);
+  const totalEarning = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + (c.earning || 0), 0);
+  const totalUsage = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + (c.usageCount || 0), 0);
+  const totalViews = campaigns.filter(c => c.status !== 'draft').reduce((acc, c) => acc + (c.viewCount || 0), 0);
   const activeCampaigns = campaigns.filter(c => c.status === 'active').length;
-
-  const handleToggle = (id: string) => {
-    setCampaigns(prev => prev.map(c => {
-      if (c.id !== id) return c;
-      return { ...c, status: c.status === 'active' ? 'draft' : 'active' };
-    }));
-  };
-
-  const handleDelete = (id: string) => {
-    setCampaigns(prev => prev.filter(c => c.id !== id));
-    setShowDetail(false);
-  };
-
-  const handleDuplicate = (campaign: Campaign) => {
-    const newCampaign: Campaign = {
-      ...campaign,
-      id: Date.now().toString(),
-      title: `${campaign.title} (Kopya)`,
-      status: 'draft',
-      usageCount: 0,
-      viewCount: 0,
-      earning: 0,
-      dailyUsage: [],
-      createdAt: new Date().toLocaleDateString('tr-TR'),
-    };
-    setCampaigns(prev => [newCampaign, ...prev]);
-    setShowDetail(false);
-    Alert.alert('Kopyalandı', 'Kampanya taslak olarak kopyalandı.');
-  };
 
   const tabCounts = {
     all: campaigns.length,
@@ -1056,6 +1064,15 @@ export default function CampaignScreen() {
     draft: campaigns.filter(c => c.status === 'draft').length,
     expired: campaigns.filter(c => c.status === 'expired').length,
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} style={StyleSheet.absoluteFill} />
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -1107,7 +1124,7 @@ export default function CampaignScreen() {
             ))}
           </View>
 
-          {/* ── OTOMATİK ÖNERİ ── */}
+          {/* ── OTOMATİK ÖNERİ (HIZLI KAMPANYA) ── */}
           <View style={styles.suggestionCard}>
             <LinearGradient
               colors={[COLORS.primary + '33', COLORS.primaryDark + '22']}
@@ -1118,7 +1135,7 @@ export default function CampaignScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.suggestionText}>{DUMMY_SUGGESTION.text}</Text>
-                <TouchableOpacity style={styles.suggestionBtn} onPress={() => setShowCreate(true)}>
+                <TouchableOpacity style={styles.suggestionBtn} onPress={handleOpenQuickCreate}>
                   <Text style={styles.suggestionBtnText}>{DUMMY_SUGGESTION.action}</Text>
                   <Ionicons name="arrow-forward" size={13} color={COLORS.primary} />
                 </TouchableOpacity>
@@ -1126,8 +1143,8 @@ export default function CampaignScreen() {
             </LinearGradient>
           </View>
 
-          {/* ── KAMPANYA OLUŞTUR BUTONU ── */}
-          <TouchableOpacity style={styles.createBtn} onPress={() => setShowCreate(true)}>
+          {/* ── YENİ KAMPANYA OLUŞTUR BUTONU ── */}
+          <TouchableOpacity style={styles.createBtn} onPress={handleOpenNormalCreate}>
             <LinearGradient
               colors={[COLORS.primary, COLORS.primaryDark]}
               start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }}
@@ -1168,7 +1185,7 @@ export default function CampaignScreen() {
                 key={campaign.id}
                 campaign={campaign}
                 onPress={() => { setSelectedCampaign(campaign); setShowDetail(true); }}
-                onToggle={() => handleToggle(campaign.id)}
+                onToggle={() => handleToggle(campaign.id, campaign.status)}
               />
             ))
           ) : (
@@ -1200,11 +1217,9 @@ export default function CampaignScreen() {
       {/* Oluştur modalı */}
       <CreateCampaignModal
         visible={showCreate}
+        initialData={quickCreateData}
         onClose={() => setShowCreate(false)}
-        onCreate={(campaign) => {
-          setCampaigns(prev => [campaign, ...prev]);
-          Alert.alert('Taslak Kaydedildi', 'Kampanya taslak olarak kaydedildi. Aktivasyon için düzenleyin.');
-        }}
+        onCreate={handleCreateCampaign}
       />
     </View>
   );
