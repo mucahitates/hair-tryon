@@ -13,6 +13,8 @@ hairdresser
 + işlerim(jobs)
 + sohbet(chat)
 + appointments(takvim)
++ cari
++ kampanyalar
 
 
 // app/(hairdresser)/appointments.tsx

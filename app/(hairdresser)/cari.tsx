@@ -20,8 +20,13 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
+// DOSYA İŞLEMLERİ İÇİN EXPO IMPORTS
+import * as Sharing from 'expo-sharing';
+import * as Print from 'expo-print';
+import * as FileSystem from 'expo-file-system/legacy';
+
 // FIREBASE IMPORTS
-import { collection, query, where, onSnapshot, addDoc, serverTimestamp, orderBy } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 import { useAuthStore } from '../../src/stores/authStore';
 
@@ -58,7 +63,7 @@ const EXPENSE_CATEGORIES = [
 const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const TR_MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
 
-// YYYY-MM-DD formatını "12 Haz 2025" formatına çeviren yardımcı
+// YYYY-MM-DD formatını "12 Haz 2026" formatına çeviren yardımcı
 const formatDisplayDate = (dateStr: string) => {
     if (!dateStr) return '';
     const parts = dateStr.split('-');
@@ -84,7 +89,6 @@ const sectionStyles = StyleSheet.create({
     title: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.textPrimary },
 });
 
-// ─── GİDER EKLE MODALI ─────────────────────────────────────
 // ─── GİDER EKLE MODALI ─────────────────────────────────────
 function AddExpenseModal({ visible, onClose, onAdd }: {
     visible: boolean;
@@ -228,7 +232,7 @@ function AddExpenseModal({ visible, onClose, onAdd }: {
 
 const expenseModalStyles = StyleSheet.create({
     overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'flex-end' },
-    container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.88, overflow: 'hidden' }, // Absolute kodu kaldırıldı, flex-end'e uyumlu hale getirildi
+    container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.88, overflow: 'hidden' },
     handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.lg, paddingTop: SPACING.sm, borderBottomWidth: 1, borderBottomColor: COLORS.border },
     title: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary },
@@ -248,7 +252,6 @@ const expenseModalStyles = StyleSheet.create({
     addBtn: { borderRadius: RADIUS.xl, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: SPACING.sm, paddingVertical: 16 },
     addBtnText: { fontSize: FONTS.large, fontWeight: 'bold', color: COLORS.white },
 });
-
 
 // ─── ANA EKRAN ─────────────────────────────────────────────
 export default function CariScreen() {
@@ -274,10 +277,7 @@ export default function CariScreen() {
         const unsubs: (() => void)[] = [];
 
         // 1. Gelirler (Onaylanmış veya Tamamlanmış Randevular)
-        const aptQ = query(
-            collection(db, 'appointments'),
-            where('hairdresserId', '==', user.uid)
-        );
+        const aptQ = query(collection(db, 'appointments'), where('hairdresserId', '==', user.uid));
         unsubs.push(onSnapshot(aptQ, (snap) => {
             const data = snap.docs
                 .map(doc => ({ id: doc.id, ...doc.data() } as any))
@@ -295,10 +295,7 @@ export default function CariScreen() {
         }));
 
         // 2. Giderler
-        const expQ = query(
-            collection(db, 'expenses'),
-            where('hairdresserId', '==', user.uid)
-        );
+        const expQ = query(collection(db, 'expenses'), where('hairdresserId', '==', user.uid));
         unsubs.push(onSnapshot(expQ, (snap) => {
             const data = snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Expense));
             setExpenses(data);
@@ -342,7 +339,6 @@ export default function CariScreen() {
     const lastMonthStr = lastMonthNum < 10 ? `0${lastMonthNum}` : `${lastMonthNum}`;
     const lastMonthPrefix = `${lastYearStr}-${lastMonthStr}`;
 
-    // Aktif periyoda göre verileri filtreleme
     const filteredApts = appointments.filter(a => {
         if (!a.date) return false;
         if (activePeriod === 'month') return a.date.startsWith(currentMonthPrefix);
@@ -359,7 +355,6 @@ export default function CariScreen() {
     const totalExpense = filteredExps.reduce((acc, e) => acc + e.amount, 0);
     const netProfit = totalIncome - totalExpense;
 
-    // Geçen ay hesaplaması (Sadece 'month' seçiliyken büyüme oranı göstermek için)
     const thisMonthIncome = appointments.filter(a => a.date?.startsWith(currentMonthPrefix)).reduce((acc, a) => acc + a.price, 0);
     const lastMonthIncome = appointments.filter(a => a.date?.startsWith(lastMonthPrefix)).reduce((acc, a) => acc + a.price, 0);
 
@@ -367,7 +362,7 @@ export default function CariScreen() {
     if (lastMonthIncome > 0) {
         growthRate = ((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100;
     } else if (thisMonthIncome > 0) {
-        growthRate = 100; // Geçen ay sıfırsa %100 büyüme
+        growthRate = 100;
     }
     const isGrowthPositive = growthRate >= 0;
 
@@ -375,7 +370,6 @@ export default function CariScreen() {
     const kdvAmount = Math.round(totalIncome * 0.18);
     const taxEstimate = Math.round(netProfit > 0 ? netProfit * 0.15 : 0);
 
-    // Dinamik Gider Kategorileri
     const expenseByCategory = EXPENSE_CATEGORIES.map(cat => ({
         category: cat.key,
         amount: filteredExps.filter(e => e.category === cat.key).reduce((acc, e) => acc + e.amount, 0),
@@ -385,7 +379,6 @@ export default function CariScreen() {
 
     const totalExpenseByCat = expenseByCategory.reduce((acc, e) => acc + e.amount, 0);
 
-    // Dinamik En İyi Hizmetler
     const serviceMap: Record<string, { count: number, earning: number }> = {};
     filteredApts.forEach(a => {
         if (!serviceMap[a.service]) serviceMap[a.service] = { count: 0, earning: 0 };
@@ -404,7 +397,6 @@ export default function CariScreen() {
     }).sort((a, b) => b.earning - a.earning).slice(0, 5);
     const maxService = topServices.length > 0 ? Math.max(...topServices.map(s => s.earning)) : 1;
 
-    // Dinamik En Sadık Müşteriler
     const customerMap: Record<string, { emoji: string, visits: number, spent: number }> = {};
     filteredApts.forEach(a => {
         if (!customerMap[a.customerName]) customerMap[a.customerName] = { emoji: a.customerEmoji, visits: 0, spent: 0 };
@@ -419,7 +411,6 @@ export default function CariScreen() {
         totalSpent: customerMap[key].spent
     })).sort((a, b) => b.totalSpent - a.totalSpent).slice(0, 5);
 
-    // Dinamik Grafik Datası (Son 6 Ay)
     const monthlyData = [];
     for (let i = 5; i >= 0; i--) {
         const d = new Date();
@@ -435,7 +426,6 @@ export default function CariScreen() {
     }
     const maxMonthly = Math.max(1, ...monthlyData.map(m => Math.max(m.income, m.expense)));
 
-    // Tüm işlemler birleşik ve tarihe göre sıralı
     const allTransactions = [
         ...filteredApts.map(t => ({ id: t.id, date: t.date, customer: t.customerName, service: t.service, amount: t.price, type: 'income' as const, category: 'Hizmet' })),
         ...filteredExps.map(e => ({ id: e.id, date: e.date, customer: e.category, service: e.note || e.category, amount: -e.amount, type: 'expense' as const, category: e.category })),
@@ -446,6 +436,213 @@ export default function CariScreen() {
         if (activeFilter === 'expense') return t.type === 'expense';
         return true;
     });
+
+    // ─── EXPORT FONKSİYONLARI ───
+    const exportToExcel = async () => {
+        try {
+            const headerString = 'Tarih,Islem/Musteri,Kategori,Tip,Tutar (TL)\n';
+            const rowString = displayTransactions.map(t =>
+                `${t.date},${t.customer} - ${t.service},${t.category},${t.type === 'income' ? 'Gelir' : 'Gider'},${Math.abs(t.amount)}`
+            ).join('\n');
+            const csvString = headerString + rowString;
+
+            const fileUri = FileSystem.documentDirectory + 'Cari_Dokum.csv';
+
+            await FileSystem.writeAsStringAsync(fileUri, csvString, { encoding: 'utf8' });
+
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(fileUri);
+            } else {
+                Alert.alert('Bilgi', 'Cihazınızda paylaşım özelliği desteklenmiyor.');
+            }
+        } catch (error) {
+            Alert.alert('Hata', 'Excel dosyası oluşturulurken hata oluştu.');
+            console.error(error);
+        }
+    };
+    const exportToPDF = async () => {
+        try {
+            const htmlContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <style>
+                        body { 
+                            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; 
+                            padding: 40px; 
+                            color: #333; 
+                            background-color: #f4f4f9; 
+                        }
+                        .container { 
+                            background: #fff; 
+                            padding: 40px; 
+                            border-radius: 16px; 
+                            box-shadow: 0 10px 30px rgba(0,0,0,0.05); 
+                        }
+                        .header { 
+                            text-align: center; 
+                            border-bottom: 2px solid #7C3AED; 
+                            padding-bottom: 20px; 
+                            margin-bottom: 30px; 
+                        }
+                        .header h1 { 
+                            color: #7C3AED; 
+                            margin: 0; 
+                            font-size: 32px; 
+                            text-transform: uppercase; 
+                            letter-spacing: 1px; 
+                        }
+                        .header p { 
+                            color: #666; 
+                            margin-top: 8px; 
+                            font-size: 15px; 
+                        }
+                        .summary-grid { 
+                            display: flex; 
+                            justify-content: space-between; 
+                            margin-bottom: 40px; 
+                            gap: 20px; 
+                        }
+                        .summary-card { 
+                            flex: 1; 
+                            background: #fafafa; 
+                            padding: 20px; 
+                            border-radius: 12px; 
+                            text-align: center; 
+                            border: 1px solid #eaeaea; 
+                        }
+                        .summary-card h3 { 
+                            margin: 0 0 10px 0; 
+                            font-size: 13px; 
+                            color: #888; 
+                            font-weight: 600; 
+                            text-transform: uppercase; 
+                            letter-spacing: 0.5px;
+                        }
+                        .val { font-size: 28px; font-weight: 800; }
+                        .val.income { color: #059669; }
+                        .val.expense { color: #DC2626; }
+                        .val.net { color: #7C3AED; }
+                        table { 
+                            width: 100%; 
+                            border-collapse: collapse; 
+                            margin-top: 10px; 
+                            font-size: 14px; 
+                        }
+                        th { 
+                            background-color: #7C3AED; 
+                            color: white; 
+                            padding: 14px 12px; 
+                            text-align: left; 
+                            font-weight: 600; 
+                            font-size: 13px;
+                            text-transform: uppercase;
+                        }
+                        th:first-child { border-top-left-radius: 8px; }
+                        th:last-child { border-top-right-radius: 8px; text-align: right; }
+                        td { 
+                            padding: 16px 12px; 
+                            border-bottom: 1px solid #f0f0f0; 
+                            color: #444; 
+                            vertical-align: middle;
+                        }
+                        tr:last-child td { border-bottom: none; }
+                        .item-title { font-weight: 700; color: #222; font-size: 15px; }
+                        .item-sub { font-size: 12px; color: #888; margin-top: 4px; }
+                        .badge { 
+                            padding: 6px 10px; 
+                            border-radius: 6px; 
+                            font-size: 11px; 
+                            font-weight: bold; 
+                            letter-spacing: 0.5px;
+                        }
+                        .badge.income { background-color: #d1fae5; color: #059669; }
+                        .badge.expense { background-color: #fee2e2; color: #DC2626; }
+                        .footer { 
+                            margin-top: 50px; 
+                            text-align: center; 
+                            font-size: 12px; 
+                            color: #aaa; 
+                            border-top: 1px solid #eaeaea; 
+                            padding-top: 20px; 
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="container">
+                        <div class="header">
+                            <h1>Cari Döküm Raporu</h1>
+                            <p>Dönem: <strong>${activePeriod === 'month' ? 'Bu Ay' : 'Bu Yıl'}</strong> &nbsp;|&nbsp; Çıktı Tarihi: ${new Date().toLocaleDateString('tr-TR')}</p>
+                        </div>
+                        
+                        <div class="summary-grid">
+                            <div class="summary-card">
+                                <h3>Toplam Gelir</h3>
+                                <div class="val income">₺${totalIncome.toLocaleString()}</div>
+                            </div>
+                            <div class="summary-card">
+                                <h3>Toplam Gider</h3>
+                                <div class="val expense">₺${totalExpense.toLocaleString()}</div>
+                            </div>
+                            <div class="summary-card">
+                                <h3>Net Kazanç</h3>
+                                <div class="val net">₺${netProfit.toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Tarih</th>
+                                    <th>İşlem / Açıklama</th>
+                                    <th>Kategori</th>
+                                    <th>Durum</th>
+                                    <th>Tutar</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${displayTransactions.map(t => `
+                                    <tr>
+                                        <td style="white-space: nowrap; color: #666;">${formatDisplayDate(t.date)}</td>
+                                        <td>
+                                            <div class="item-title">${t.customer}</div>
+                                            <div class="item-sub">${t.service}</div>
+                                        </td>
+                                        <td><span style="color: #666; font-weight: 500;">${t.category}</span></td>
+                                        <td>
+                                            <span class="badge ${t.type === 'income' ? 'income' : 'expense'}">
+                                                ${t.type === 'income' ? 'GELİR' : 'GİDER'}
+                                            </span>
+                                        </td>
+                                        <td style="text-align: right; font-weight: 800; font-size: 15px;" class="${t.type === 'income' ? 'val income' : 'val expense'}">
+                                            ${t.type === 'income' ? '+' : '-'}₺${Math.abs(t.amount).toLocaleString()}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+
+                        <div class="footer">
+                            Bu rapor, kuaför yönetim sistemi tarafından otomatik olarak oluşturulmuştur.<br>
+                            © ${new Date().getFullYear()} - Tüm Hakları Saklıdır.
+                        </div>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            const { uri } = await Print.printToFileAsync({ html: htmlContent });
+            
+            if (await Sharing.isAvailableAsync()) {
+                await Sharing.shareAsync(uri);
+            } else {
+                Alert.alert('Bilgi', 'Cihazınızda paylaşım özelliği desteklenmiyor.');
+            }
+        } catch (error) {
+            Alert.alert('Hata', 'PDF oluşturulurken hata oluştu.');
+        }
+    };
 
     if (loading) {
         return (
@@ -484,16 +681,6 @@ export default function CariScreen() {
                     <Text style={styles.title}>Cari Döküm</Text>
                     <Text style={styles.subtitle}>Gelir & Gider Analizi</Text>
                 </View>
-                <TouchableOpacity
-                    style={styles.exportBtn}
-                    onPress={() => Alert.alert('Dışa Aktar', 'Format seçin:', [
-                        { text: 'PDF', onPress: () => Alert.alert('PDF', 'PDF oluşturuluyor...') },
-                        { text: 'Excel', onPress: () => Alert.alert('Excel', 'Excel oluşturuluyor...') },
-                        { text: 'İptal', style: 'cancel' },
-                    ])}
-                >
-                    <Ionicons name="download-outline" size={20} color={COLORS.primary} />
-                </TouchableOpacity>
             </Animated.View>
 
             <Animated.ScrollView
@@ -873,7 +1060,7 @@ export default function CariScreen() {
                         <View style={styles.exportButtons}>
                             <TouchableOpacity
                                 style={styles.exportButton}
-                                onPress={() => Alert.alert('PDF', 'Cari döküm PDF olarak hazırlanıyor...')}
+                                onPress={exportToPDF}
                             >
                                 <LinearGradient colors={['#F87171' + '33', '#F87171' + '22']} style={styles.exportButtonGradient}>
                                     <Ionicons name="document-text-outline" size={22} color="#F87171" />
@@ -882,7 +1069,7 @@ export default function CariScreen() {
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={styles.exportButton}
-                                onPress={() => Alert.alert('Excel', 'Cari döküm Excel olarak hazırlanıyor...')}
+                                onPress={exportToExcel}
                             >
                                 <LinearGradient colors={['#34D399' + '33', '#34D399' + '22']} style={styles.exportButtonGradient}>
                                     <Ionicons name="grid-outline" size={22} color="#34D399" />

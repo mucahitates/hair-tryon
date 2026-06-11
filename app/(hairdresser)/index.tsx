@@ -108,11 +108,12 @@ export default function HairdresserDashboard() {
   // Canlı Veri State'leri
   const [isOnline, setIsOnline] = useState(true);
   const [salonName, setSalonName] = useState('Yükleniyor...');
-  const [nextAppointment, setNextAppointment] = useState<any>(null);
-  const [schedule, setSchedule] = useState<any[]>([]);
+
+  const [appointments, setAppointments] = useState<any[]>([]);
+  const [expenses, setExpenses] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [actions, setActions] = useState<any[]>([]);
-  const [cari, setCari] = useState({ totalEarning: 0, totalExpense: 0, netProfit: 0, totalJobs: 0, thisMonth: 0, lastMonth: 0 });
+
   const [loading, setLoading] = useState(true);
 
   const headerAnim = useRef(new Animated.Value(0)).current;
@@ -133,39 +134,29 @@ export default function HairdresserDashboard() {
 
     const unsubs: (() => void)[] = [];
 
-    // 1. Profil ve Cari Durumu Dinle
+    // 1. Profil Dinle
     const profRef = doc(db, 'hairdresserProfiles', user.uid);
     unsubs.push(onSnapshot(profRef, (docSnap) => {
       if (docSnap.exists()) {
         const profData = docSnap.data();
         setSalonName(profData.salonName || 'Salon Adı Belirtilmemiş');
         setIsOnline(profData.isOnline ?? true);
-        if (profData.cariSummary) {
-          setCari(profData.cariSummary);
-        }
       }
     }));
 
-    // 2. Randevuları Dinle (Bugünkü Program & Sıradaki Randevu)
-    const appQ = query(
-      collection(db, 'appointments'),
-      where('hairdresserId', '==', user.uid),
-      orderBy('time', 'asc')
-    );
+    // 2. Randevuları Dinle
+    const appQ = query(collection(db, 'appointments'), where('hairdresserId', '==', user.uid));
     unsubs.push(onSnapshot(appQ, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      setSchedule(list);
-
-      // Sıradaki ilk randevuyu ayarla (durumu 'upcoming' olan ilk randevu)
-      const next = list.find((a: any) => a.status === 'upcoming');
-      if (next) {
-        setNextAppointment(next);
-      } else {
-        setNextAppointment(null);
-      }
+      setAppointments(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }));
 
-    // 3. Mesajları Dinle
+    // 3. Giderleri Dinle
+    const expQ = query(collection(db, 'expenses'), where('hairdresserId', '==', user.uid));
+    unsubs.push(onSnapshot(expQ, (snap) => {
+      setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    }));
+
+    // 4. Mesajları Dinle
     const msgQ = query(
       collection(db, 'chats'),
       where('hairdresserId', '==', user.uid),
@@ -176,17 +167,15 @@ export default function HairdresserDashboard() {
       setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }));
 
-    // 4. Aksiyon Sayaçlarını Dinle (Okunmamış Mesaj, Teklif, Onay Bekleyen)
+    // 5. Teklifler vb. Aksiyonlar Dinle
     const actionQ = query(collection(db, 'hairdresserActions'), where('hairdresserId', '==', user.uid));
     unsubs.push(onSnapshot(actionQ, (snap) => {
       if (!snap.empty) {
         setActions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
       } else {
-        // Altyapı dokümanı yoksa varsayılan şablonu koru
         setActions([
           { id: 'a1', type: 'message', text: 'Okunmamış mesajlar', icon: 'chatbubble-outline', color: '#A78BFA', count: 0 },
           { id: 'a2', type: 'bid', text: 'Bekleyen teklifler', icon: 'pricetag-outline', color: '#FFB844', count: 0 },
-          { id: 'a3', type: 'appointment', text: 'Onay bekleyen randevular', icon: 'calendar-outline', color: '#F472B6', count: 0 },
         ]);
       }
       setLoading(false);
@@ -195,21 +184,61 @@ export default function HairdresserDashboard() {
     return () => unsubs.forEach(u => u());
   }, [user?.uid]);
 
-  // Çevrimiçi durumunu Firestore'da güncelleme fonksiyonu
   const handleOnlineToggle = async (value: boolean) => {
     if (!user?.uid) return;
     setIsOnline(value);
     try {
-      await updateDoc(doc(db, 'hairdresserProfiles', user.uid), {
-        isOnline: value
-      });
+      await updateDoc(doc(db, 'hairdresserProfiles', user.uid), { isOnline: value });
     } catch (e) {
       console.error("Durum güncellenemedi:", e);
     }
   };
 
+  // ─── DİNAMİK HESAPLAMALAR ───
   const now = new Date();
   const dateStr = now.toLocaleDateString('tr-TR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const todayStr = now.toISOString().split('T')[0]; // "2026-06-11"
+  const currentMonthPrefix = todayStr.substring(0, 7); // "2026-06"
+
+  const lastMonthDate = new Date();
+  lastMonthDate.setMonth(now.getMonth() - 1);
+  const lastMonthNum = lastMonthDate.getMonth() + 1;
+  const lastMonthPrefix = `${lastMonthDate.getFullYear()}-${lastMonthNum < 10 ? '0' + lastMonthNum : lastMonthNum}`;
+
+  // Bugünkü Program (Sadece onaylanan randevular veya bekleyenler)
+  const todaysApts = appointments
+    .filter(a => a.date === todayStr && a.status !== 'cancelled')
+    .sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+  // Sıradaki Randevu
+  const nowTime = now.toTimeString().substring(0, 5);
+  let nextApp = todaysApts.find(a => (a.time >= nowTime) && a.status !== 'completed');
+  if (nextApp) {
+    const [h, m] = nextApp.time.split(':').map(Number);
+    const appDate = new Date();
+    appDate.setHours(h, m, 0, 0);
+    const minsLeft = Math.floor((appDate.getTime() - new Date().getTime()) / 60000);
+    nextApp = { ...nextApp, minutesLeft: Math.max(0, minsLeft) };
+  }
+
+  // Cari Özet Hesaplamaları (Sadece confirmed veya completed gelire dönüşür)
+  const validApts = appointments.filter(a => a.status === 'confirmed' || a.status === 'completed');
+  const totalEarning = validApts.reduce((acc, a) => acc + (Number(a.price) || 0), 0);
+  const thisMonthIncome = validApts.filter(a => a.date?.startsWith(currentMonthPrefix)).reduce((acc, a) => acc + (Number(a.price) || 0), 0);
+  const lastMonthIncome = validApts.filter(a => a.date?.startsWith(lastMonthPrefix)).reduce((acc, a) => acc + (Number(a.price) || 0), 0);
+
+  const totalExpense = expenses.reduce((acc, e) => acc + (Number(e.amount) || 0), 0);
+  const netProfit = totalEarning - totalExpense;
+  const totalJobs = validApts.length;
+
+  let growthRate = 0;
+  if (lastMonthIncome > 0) growthRate = ((thisMonthIncome - lastMonthIncome) / lastMonthIncome) * 100;
+  else if (thisMonthIncome > 0) growthRate = 100;
+  const isGrowthPositive = growthRate >= 0;
+
+  // Aksiyonlar: Bekleyen Randevu Sayısı (Tüm zamanların onay bekleyenleri)
+  const pendingAptsCount = appointments.filter(a => a.status === 'pending').length;
 
   if (loading) {
     return (
@@ -260,23 +289,22 @@ export default function HairdresserDashboard() {
               </View>
             </View>
 
-            {/* Bugün özet */}
             <View style={styles.welcomeBadges}>
               <View style={styles.welcomeBadge}>
                 <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
-                <Text style={styles.welcomeBadgeText}>{schedule.length} randevu</Text>
+                <Text style={styles.welcomeBadgeText}>{todaysApts.length} randevu</Text>
               </View>
               <View style={styles.welcomeBadgeDivider} />
               <View style={styles.welcomeBadge}>
                 <Ionicons name="time-outline" size={14} color='#FFB844' />
                 <Text style={styles.welcomeBadgeText}>
-                  {(actions.find(a => a.type === 'bid')?.count || 0)} bekleyen
+                  {(actions.find(a => a.type === 'bid')?.count || 0)} teklif
                 </Text>
               </View>
               <View style={styles.welcomeBadgeDivider} />
               <View style={styles.welcomeBadge}>
                 <Ionicons name="cash-outline" size={14} color='#34D399' />
-                <Text style={styles.welcomeBadgeText}>₺{cari.thisMonth.toLocaleString()} bu ay</Text>
+                <Text style={styles.welcomeBadgeText}>₺{thisMonthIncome.toLocaleString()}</Text>
               </View>
             </View>
           </LinearGradient>
@@ -288,6 +316,29 @@ export default function HairdresserDashboard() {
           <View style={styles.section}>
             <SectionTitle title="Aksiyona İhtiyaç Var" icon="alert-circle-outline" />
             <View style={styles.actionsNeededGrid}>
+
+              {/* Dinamik Onay Bekleyen Randevu Aksiyonu */}
+              <TouchableOpacity
+                style={styles.actionNeededCard}
+                onPress={() => router.push('/(hairdresser)/appointments' as any)}
+              >
+                <LinearGradient colors={['#F472B622', '#F472B611']} style={styles.actionNeededGradient}>
+                  <View style={styles.actionNeededTop}>
+                    <View style={[styles.actionNeededIcon, { backgroundColor: '#F472B622' }]}>
+                      <Ionicons name="calendar-outline" size={20} color="#F472B6" />
+                    </View>
+                    <View style={[styles.actionNeededBadge, { backgroundColor: '#F472B6' }]}>
+                      <Text style={styles.actionNeededBadgeText}>{pendingAptsCount}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.actionNeededText}>Onay bekleyen randevu</Text>
+                  <View style={styles.actionNeededArrow}>
+                    <Text style={[styles.actionNeededGo, { color: '#F472B6' }]}>Git →</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+
+              {/* Diğer Aksiyonlar (Mesaj / Teklif) */}
               {actions.map((action) => (
                 <TouchableOpacity
                   key={action.id}
@@ -295,7 +346,6 @@ export default function HairdresserDashboard() {
                   onPress={() => {
                     if (action.type === 'message') router.push('/(hairdresser)/chats' as any);
                     else if (action.type === 'bid') router.push('/(hairdresser)/jobs' as any);
-                    else router.push('/(hairdresser)/appointments' as any);
                   }}
                 >
                   <LinearGradient
@@ -310,7 +360,7 @@ export default function HairdresserDashboard() {
                         <Text style={styles.actionNeededBadgeText}>{action.count}</Text>
                       </View>
                     </View>
-                    <Text style={styles.actionNeededText}>{action.count} {action.text}</Text>
+                    <Text style={styles.actionNeededText}>{action.text}</Text>
                     <View style={styles.actionNeededArrow}>
                       <Text style={[styles.actionNeededGo, { color: action.color }]}>Git →</Text>
                     </View>
@@ -320,25 +370,25 @@ export default function HairdresserDashboard() {
             </View>
           </View>
 
-          {/* ── 3. SIRADAKI RANDEVU — GERİ SAYIM ── */}
-          {nextAppointment ? (
+          {/* ── 3. SIRADAKI RANDEVU ── */}
+          {nextApp ? (
             <View style={styles.section}>
               <SectionTitle title="Sıradaki Randevu" icon="time-outline" />
               <LinearGradient
-                colors={[(nextAppointment.color || '#A78BFA') + '44', (nextAppointment.color || '#A78BFA') + '22']}
+                colors={[(nextApp.color || '#A78BFA') + '44', (nextApp.color || '#A78BFA') + '22']}
                 style={styles.nextAppCard}
               >
                 <View style={styles.nextAppTop}>
                   <View style={styles.nextAppLeft}>
-                    <View style={[styles.nextAppAvatar, { backgroundColor: (nextAppointment.color || '#A78BFA') + '33' }]}>
-                      <Text style={styles.nextAppEmoji}>{nextAppointment.customerEmoji || '👩'}</Text>
+                    <View style={[styles.nextAppAvatar, { backgroundColor: (nextApp.color || '#A78BFA') + '33' }]}>
+                      <Text style={styles.nextAppEmoji}>{nextApp.customerEmoji || '👩'}</Text>
                     </View>
                     <View>
-                      <Text style={styles.nextAppName}>{nextAppointment.customerName}</Text>
-                      <Text style={styles.nextAppService}>{nextAppointment.service}</Text>
+                      <Text style={styles.nextAppName}>{nextApp.customerName}</Text>
+                      <Text style={styles.nextAppService}>{nextApp.service}</Text>
                       <View style={styles.nextAppMeta}>
                         <Ionicons name="time-outline" size={12} color="rgba(255,255,255,0.7)" />
-                        <Text style={styles.nextAppTime}>{nextAppointment.time} · {nextAppointment.duration || '60 dk'}</Text>
+                        <Text style={styles.nextAppTime}>{nextApp.time} · {nextApp.duration || 60} dk</Text>
                       </View>
                     </View>
                   </View>
@@ -346,7 +396,7 @@ export default function HairdresserDashboard() {
 
                 <View style={styles.countdownSection}>
                   <Text style={styles.countdownLabel}>Kalan Süre</Text>
-                  <CountdownTimer minutes={nextAppointment.minutesLeft || 45} />
+                  <CountdownTimer minutes={nextApp.minutesLeft} />
                 </View>
               </LinearGradient>
             </View>
@@ -354,7 +404,7 @@ export default function HairdresserDashboard() {
             <View style={styles.section}>
               <SectionTitle title="Sıradaki Randevu" icon="time-outline" />
               <View style={[styles.nextAppCard, { justifyContent: 'center', alignItems: 'center', padding: SPACING.xl, backgroundColor: 'rgba(255,255,255,0.03)' }]}>
-                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small }}>Yaklaşan randevunuz bulunmuyor.</Text>
+                <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small }}>Bugün için yaklaşan randevunuz bulunmuyor.</Text>
               </View>
             </View>
           )}
@@ -368,27 +418,24 @@ export default function HairdresserDashboard() {
               onAction={() => router.push('/(hairdresser)/appointments' as any)}
             />
             <View style={styles.scheduleCard}>
-              {schedule.length === 0 ? (
+              {todaysApts.length === 0 ? (
                 <Text style={{ color: COLORS.textMuted, fontSize: FONTS.small, textAlign: 'center', padding: SPACING.md }}>Bugün için randevu planlanmadı.</Text>
               ) : (
-                schedule.map((item, index) => (
+                todaysApts.map((item, index) => (
                   <View key={item.id}>
                     <View style={styles.scheduleRow}>
-                      {/* Sol zaman sütunu */}
                       <View style={styles.scheduleTimeCol}>
                         <Text style={[styles.scheduleTime, { color: item.color || '#A78BFA' }]}>{item.time}</Text>
                         <Text style={styles.scheduleDuration}>{item.duration || 60} dk</Text>
                       </View>
 
-                      {/* Dikey çizgi */}
                       <View style={styles.scheduleLineCol}>
                         <View style={[styles.scheduleDot, { backgroundColor: item.color || '#A78BFA' }]} />
-                        {index < schedule.length - 1 && (
+                        {index < todaysApts.length - 1 && (
                           <View style={[styles.scheduleLine, { backgroundColor: (item.color || '#A78BFA') + '44' }]} />
                         )}
                       </View>
 
-                      {/* Sağ içerik */}
                       <View style={[styles.scheduleContent, { borderLeftColor: (item.color || '#A78BFA') + '44' }]}>
                         <View style={styles.scheduleContentInner}>
                           <Text style={styles.scheduleEmoji}>{item.customerEmoji || '👩'}</Text>
@@ -486,6 +533,8 @@ export default function HairdresserDashboard() {
               </LinearGradient>
             </TouchableOpacity>
           </View>
+
+          {/* ── 7. CARİ ÖZET ── */}
           {/* ── 7. CARİ ÖZET ── */}
           <View style={[styles.section, { marginBottom: 140 }]}>
             <SectionTitle
@@ -499,42 +548,43 @@ export default function HairdresserDashboard() {
                 colors={['rgba(255,255,255,0.08)', 'rgba(255,255,255,0.04)']}
                 style={styles.cariGradient}
               >
-                {/* Ana cari sayılar */}
                 <View style={styles.cariTopRow}>
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Net Kazanç</Text>
-                    <Text style={[styles.cariMainValue, { color: '#34D399' }]}>
-                      ₺{cari.netProfit.toLocaleString()}
+                    {/* Eksi ise Kırmızı, Artı/Sıfır ise Yeşil ve eksi işaretini doğru konumlandır */}
+                    <Text style={[styles.cariMainValue, { color: netProfit < 0 ? '#F87171' : '#34D399' }]}>
+                      {netProfit < 0 ? '-' : ''}₺{Math.abs(netProfit).toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.cariDivider} />
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Bu Ay</Text>
                     <Text style={[styles.cariMainValue, { color: COLORS.primary }]}>
-                      ₺{cari.thisMonth.toLocaleString()}
+                      ₺{thisMonthIncome.toLocaleString()}
                     </Text>
                     <View style={styles.cariGrowth}>
-                      <Ionicons name="trending-up" size={12} color="#34D399" />
-                      <Text style={styles.cariGrowthText}>+%14</Text>
+                      <Ionicons name={isGrowthPositive ? "trending-up" : "trending-down"} size={12} color={isGrowthPositive ? "#34D399" : "#F87171"} />
+                      <Text style={[styles.cariGrowthText, { color: isGrowthPositive ? "#34D399" : "#F87171" }]}>
+                        {isGrowthPositive ? '+' : ''}%{Math.abs(growthRate).toFixed(1)}
+                      </Text>
                     </View>
                   </View>
                   <View style={styles.cariDivider} />
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Toplam İş</Text>
                     <Text style={[styles.cariMainValue, { color: '#FFB844' }]}>
-                      {cari.totalJobs}
+                      {totalJobs}
                     </Text>
                   </View>
                 </View>
 
-                {/* Alt detay */}
                 <View style={styles.cariBottomRow}>
                   <View style={styles.cariBottomItem}>
                     <View style={styles.cariBottomLeft}>
                       <View style={[styles.cariDot, { backgroundColor: '#34D399' }]} />
                       <Text style={styles.cariBottomLabel}>Toplam Gelir</Text>
                     </View>
-                    <Text style={styles.cariBottomValue}>₺{cari.totalEarning.toLocaleString()}</Text>
+                    <Text style={styles.cariBottomValue}>₺{totalEarning.toLocaleString()}</Text>
                   </View>
                   <View style={styles.cariBottomItem}>
                     <View style={styles.cariBottomLeft}>
@@ -542,19 +592,18 @@ export default function HairdresserDashboard() {
                       <Text style={styles.cariBottomLabel}>Toplam Gider</Text>
                     </View>
                     <Text style={[styles.cariBottomValue, { color: '#F87171' }]}>
-                      ₺{cari.totalExpense.toLocaleString()}
+                      ₺{totalExpense.toLocaleString()}
                     </Text>
                   </View>
                   <View style={styles.cariBottomItem}>
                     <View style={styles.cariBottomLeft}>
                       <View style={[styles.cariDot, { backgroundColor: '#A78BFA' }]} />
-                      <Text style={styles.cariBottomLabel}>Geçen Ay</Text>
+                      <Text style={styles.cariBottomLabel}>Geçen Ay Gelir</Text>
                     </View>
-                    <Text style={styles.cariBottomValue}>₺{cari.lastMonth.toLocaleString()}</Text>
+                    <Text style={styles.cariBottomValue}>₺{lastMonthIncome.toLocaleString()}</Text>
                   </View>
                 </View>
 
-                {/* Detay butonu */}
                 <TouchableOpacity
                   style={styles.cariDetailBtn}
                   onPress={() => router.push('/(hairdresser)/cari' as any)}
@@ -565,7 +614,6 @@ export default function HairdresserDashboard() {
               </LinearGradient>
             </View>
           </View>
-
 
         </Animated.View>
       </ScrollView>
@@ -580,7 +628,6 @@ const styles = StyleSheet.create({
   orb2: { position: 'absolute', width: 200, height: 200, borderRadius: 100, backgroundColor: '#A78BFA', opacity: 0.08, bottom: 300, left: -60 },
   scrollContent: { paddingTop: 56 },
 
-  // Hoşgeldin kartı
   welcomeCard: { marginHorizontal: SPACING.lg, marginBottom: SPACING.xl, borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   welcomeGradient: { padding: SPACING.lg },
   welcomeTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.md },
@@ -596,22 +643,20 @@ const styles = StyleSheet.create({
   welcomeBadgeDivider: { width: 1, height: 20, backgroundColor: 'rgba(255,255,255,0.2)' },
   welcomeBadgeText: { fontSize: FONTS.small, color: 'rgba(255,255,255,0.8)', fontWeight: '600' },
 
-  // Bölümler
   section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
 
-  // Aksiyon kartları
-  actionsNeededGrid: { flexDirection: 'row', gap: SPACING.sm },
-  actionNeededCard: { flex: 1, borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  actionNeededGradient: { padding: SPACING.md, gap: SPACING.sm },
-  actionNeededTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  /* ─ DÜZELTİLEN YERLEŞİM (FLEX BUG FİX) ─ */
+  actionsNeededGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: SPACING.sm },
+  actionNeededCard: { width: '48%', borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
+  actionNeededGradient: { padding: SPACING.md, minHeight: 110 },
+  actionNeededTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: SPACING.sm },
   actionNeededIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  actionNeededBadge: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
+  actionNeededBadge: { minWidth: 20, height: 20, paddingHorizontal: 6, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   actionNeededBadgeText: { fontSize: 10, color: COLORS.white, fontWeight: 'bold' },
   actionNeededText: { fontSize: FONTS.small, color: COLORS.textSecondary, fontWeight: '600', lineHeight: 16 },
-  actionNeededArrow: { alignItems: 'flex-end' },
+  actionNeededArrow: { alignItems: 'flex-end', marginTop: 10 },
   actionNeededGo: { fontSize: FONTS.small, fontWeight: '700' },
 
-  // Sıradaki randevu
   nextAppCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, padding: SPACING.lg, gap: SPACING.lg },
   nextAppTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   nextAppLeft: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md },
@@ -624,7 +669,6 @@ const styles = StyleSheet.create({
   countdownSection: { alignItems: 'center', gap: SPACING.sm },
   countdownLabel: { fontSize: FONTS.small, color: 'rgba(255,255,255,0.7)', fontWeight: '600' },
 
-  // Bugünkü program
   scheduleCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.md },
   scheduleRow: { flexDirection: 'row', gap: SPACING.sm, minHeight: 60 },
   scheduleTimeCol: { width: 52, alignItems: 'flex-end', paddingTop: 2 },
@@ -641,7 +685,6 @@ const styles = StyleSheet.create({
   scheduleService: { fontSize: 11, color: COLORS.textMuted },
   scheduleStatusDot: { width: 8, height: 8, borderRadius: 4 },
 
-  // Hızlı mesajlar
   messagesCard: { backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, overflow: 'hidden' },
   messageRow: { flexDirection: 'row', alignItems: 'center', padding: SPACING.md, gap: SPACING.md },
   messageAvatarWrapper: { position: 'relative' },
@@ -658,7 +701,6 @@ const styles = StyleSheet.create({
   replyBtn: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center' },
   messageDivider: { height: 1, backgroundColor: COLORS.border, marginHorizontal: SPACING.md },
 
-  // Kampanya
   campaignCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.primary + '44' },
   campaignGradient: { padding: SPACING.lg, flexDirection: 'row', alignItems: 'center' },
   campaignLeft: { flex: 1, gap: SPACING.sm },
@@ -671,7 +713,6 @@ const styles = StyleSheet.create({
   campaignStat: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.white },
   campaignStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.8)' },
 
-  // Cari
   cariCard: { borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   cariGradient: { padding: SPACING.lg, gap: SPACING.md },
   cariTopRow: { flexDirection: 'row', alignItems: 'center' },
