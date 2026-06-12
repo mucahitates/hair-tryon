@@ -112,7 +112,10 @@ export default function HairdresserDashboard() {
   const [appointments, setAppointments] = useState<any[]>([]);
   const [expenses, setExpenses] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
-  const [actions, setActions] = useState<any[]>([]);
+  
+  // Aksiyonlar için gerçek dataları tutacağımız stateler
+  const [unreadMessagesCount, setUnreadMessagesCount] = useState(0);
+  const [pendingBidsCount, setPendingBidsCount] = useState(0);
 
   const [loading, setLoading] = useState(true);
 
@@ -156,28 +159,26 @@ export default function HairdresserDashboard() {
       setExpenses(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }));
 
-    // 4. Mesajları Dinle
-    const msgQ = query(
-      collection(db, 'chats'),
-      where('hairdresserId', '==', user.uid),
-      orderBy('lastMessageTime', 'desc'),
-      limit(3)
-    );
-    unsubs.push(onSnapshot(msgQ, (snap) => {
-      setMessages(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    // 4. Chat/Mesajları Dinle
+    const chatQ = query(collection(db, 'chats'), where('hairdresserId', '==', user.uid), orderBy('lastMessageTime', 'desc'));
+    unsubs.push(onSnapshot(chatQ, (snap) => {
+      const allChats = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      
+      // İlk 3 chat listesi (Hızlı mesajlar için)
+      setMessages(allChats.slice(0, 3));
+      
+      // Okunmamış mesaj sayısını hesapla
+      const unreadCount = allChats.filter((chat: any) => chat.unreadByHairdresser === true).length;
+      setUnreadMessagesCount(unreadCount);
     }));
 
-    // 5. Teklifler vb. Aksiyonlar Dinle
-    const actionQ = query(collection(db, 'hairdresserActions'), where('hairdresserId', '==', user.uid));
-    unsubs.push(onSnapshot(actionQ, (snap) => {
-      if (!snap.empty) {
-        setActions(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-      } else {
-        setActions([
-          { id: 'a1', type: 'message', text: 'Okunmamış mesajlar', icon: 'chatbubble-outline', color: '#A78BFA', count: 0 },
-          { id: 'a2', type: 'bid', text: 'Bekleyen teklifler', icon: 'pricetag-outline', color: '#FFB844', count: 0 },
-        ]);
-      }
+    // 5. Kuaförün verdiği teklifleri dinle (Bids)
+    const bidQ = query(collection(db, 'bids'), where('hairdresserId', '==', user.uid));
+    unsubs.push(onSnapshot(bidQ, (snap) => {
+      const allBids = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sadece bekleyen (pending) teklif sayısını al
+      const pendingCount = allBids.filter((bid: any) => bid.status === 'pending').length;
+      setPendingBidsCount(pendingCount);
       setLoading(false);
     }));
 
@@ -240,6 +241,12 @@ export default function HairdresserDashboard() {
   // Aksiyonlar: Bekleyen Randevu Sayısı (Tüm zamanların onay bekleyenleri)
   const pendingAptsCount = appointments.filter(a => a.status === 'pending').length;
 
+  // Aksiyon Datalarını bir araya toplayalım
+  const actionItems = [
+    { id: 'a1', type: 'message', text: 'Okunmamış mesajlar', icon: 'chatbubble-outline', color: '#A78BFA', count: unreadMessagesCount },
+    { id: 'a2', type: 'bid', text: 'Bekleyen tekliflerim', icon: 'pricetag-outline', color: '#FFB844', count: pendingBidsCount },
+  ];
+
   if (loading) {
     return (
       <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
@@ -290,6 +297,8 @@ export default function HairdresserDashboard() {
             </View>
 
             <View style={styles.welcomeBadges}>
+              
+              <View style={styles.welcomeBadgeDivider} />
               <View style={styles.welcomeBadge}>
                 <Ionicons name="calendar-outline" size={14} color={COLORS.primary} />
                 <Text style={styles.welcomeBadgeText}>{todaysApts.length} randevu</Text>
@@ -298,7 +307,7 @@ export default function HairdresserDashboard() {
               <View style={styles.welcomeBadge}>
                 <Ionicons name="time-outline" size={14} color='#FFB844' />
                 <Text style={styles.welcomeBadgeText}>
-                  {(actions.find(a => a.type === 'bid')?.count || 0)} teklif
+                  {pendingBidsCount} teklif
                 </Text>
               </View>
               <View style={styles.welcomeBadgeDivider} />
@@ -339,7 +348,7 @@ export default function HairdresserDashboard() {
               </TouchableOpacity>
 
               {/* Diğer Aksiyonlar (Mesaj / Teklif) */}
-              {actions.map((action) => (
+              {actionItems.map((action) => (
                 <TouchableOpacity
                   key={action.id}
                   style={styles.actionNeededCard}
@@ -469,7 +478,7 @@ export default function HairdresserDashboard() {
                   <View key={msg.id}>
                     <TouchableOpacity
                       style={styles.messageRow}
-                      onPress={() => router.push(`/(hairdresser)/chats` as any)}
+                      onPress={() => router.push(`/(hairdresser)/chat/${msg.id}` as any)}
                     >
                       <View style={styles.messageAvatarWrapper}>
                         <LinearGradient
@@ -478,25 +487,22 @@ export default function HairdresserDashboard() {
                         >
                           <Text style={styles.messageEmoji}>{msg.customerEmoji || '👱‍♀️'}</Text>
                         </LinearGradient>
-                        {msg.unread && <View style={styles.messageUnreadDot} />}
+                        {msg.unreadByHairdresser && <View style={styles.messageUnreadDot} />}
                       </View>
                       <View style={styles.messageContent}>
                         <View style={styles.messageTopRow}>
-                          <Text style={[styles.messageName, msg.unread && styles.messageNameBold]}>
+                          <Text style={[styles.messageName, msg.unreadByHairdresser && styles.messageNameBold]}>
                             {msg.customerName}
                           </Text>
-                          <Text style={styles.messageTime}>{msg.time || 'Şimdi'}</Text>
+                          <Text style={styles.messageTime}>{msg.lastMessageTime?.toDate ? msg.lastMessageTime.toDate().toTimeString().substring(0, 5) : 'Şimdi'}</Text>
                         </View>
-                        <Text style={[styles.messageText, msg.unread && styles.messageTextBold]} numberOfLines={1}>
-                          {msg.message || msg.lastMessage}
+                        <Text style={[styles.messageText, msg.unreadByHairdresser && styles.messageTextBold]} numberOfLines={1}>
+                          {msg.lastMessage || 'Fotoğraf/Belge'}
                         </Text>
                       </View>
-                      <TouchableOpacity
-                        style={styles.replyBtn}
-                        onPress={() => router.push(`/(hairdresser)/chats` as any)}
-                      >
+                      <View style={styles.replyBtn}>
                         <Ionicons name="arrow-redo-outline" size={16} color={COLORS.primary} />
-                      </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
                     {index < messages.length - 1 && <View style={styles.messageDivider} />}
                   </View>
@@ -535,7 +541,6 @@ export default function HairdresserDashboard() {
           </View>
 
           {/* ── 7. CARİ ÖZET ── */}
-          {/* ── 7. CARİ ÖZET ── */}
           <View style={[styles.section, { marginBottom: 140 }]}>
             <SectionTitle
               title="Cari Özet"
@@ -551,7 +556,6 @@ export default function HairdresserDashboard() {
                 <View style={styles.cariTopRow}>
                   <View style={styles.cariMainItem}>
                     <Text style={styles.cariMainLabel}>Net Kazanç</Text>
-                    {/* Eksi ise Kırmızı, Artı/Sıfır ise Yeşil ve eksi işaretini doğru konumlandır */}
                     <Text style={[styles.cariMainValue, { color: netProfit < 0 ? '#F87171' : '#34D399' }]}>
                       {netProfit < 0 ? '-' : ''}₺{Math.abs(netProfit).toLocaleString()}
                     </Text>
@@ -646,7 +650,6 @@ const styles = StyleSheet.create({
 
   section: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
 
-  /* ─ DÜZELTİLEN YERLEŞİM (FLEX BUG FİX) ─ */
   actionsNeededGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: SPACING.sm },
   actionNeededCard: { width: '48%', borderRadius: RADIUS.lg, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
   actionNeededGradient: { padding: SPACING.md, minHeight: 110 },

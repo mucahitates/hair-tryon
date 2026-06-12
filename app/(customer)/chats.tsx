@@ -12,6 +12,7 @@ import {
   TextInput,
   Dimensions,
   ActivityIndicator,
+  Image, // <-- EKLENDİ
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,6 +32,7 @@ export interface Chat {
   hairdresserId: string;
   hairdresserName: string;
   hairdresserEmoji: string;
+  hairdresserPhotoUrl?: string; // <-- EKLENDİ (Fotoğrafı alabilmesi için)
   isOnline: boolean;
   lastMessage: string;
   lastMessageAt: any; // Firestore Timestamp
@@ -72,6 +74,9 @@ function ChatCard({ chat, onPress }: { chat: Chat; onPress: () => void; }) {
     cancelled: '#F87171',
   }[chat.jobStatus] || COLORS.textMuted;
 
+  // Veritabanındaki fotoğraf alanı isimlerini geniş yakalama
+  const photoUrl = chat.hairdresserPhotoUrl || (chat as any).hairdresserImage || (chat as any).hairdresserAvatar;
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -89,16 +94,22 @@ function ChatCard({ chat, onPress }: { chat: Chat; onPress: () => void; }) {
           onPress={() => router.push(`/hairdresser/${chat.hairdresserId}` as any)}
           activeOpacity={0.7}
         >
-          <LinearGradient colors={[COLORS.primary + '44', COLORS.primaryDark + '33']} style={styles.avatar}>
-            <Text style={styles.avatarEmoji}>{chat.hairdresserEmoji || '💈'}</Text>
-          </LinearGradient>
+          {/* FOTOĞRAF KONTROLÜ EKLENDİ */}
+          {photoUrl ? (
+            <Image source={{ uri: photoUrl }} style={styles.avatar} resizeMode="cover" />
+          ) : (
+            <LinearGradient colors={[COLORS.primary + '44', COLORS.primaryDark + '33']} style={styles.avatar}>
+              <Text style={styles.avatarEmoji}>{chat.hairdresserEmoji || '💈'}</Text>
+            </LinearGradient>
+          )}
           {chat.isOnline && <View style={styles.onlineDot} />}
         </TouchableOpacity>
 
         <View style={styles.chatContent}>
           <View style={styles.chatTopRow}>
-            <Text style={[styles.hairdresserName, chat.unreadCustomer > 0 && styles.hairdresserNameBold]}>
-              {chat.hairdresserName}
+            {/* İSİM BOŞ GELİRSE FALLBACK (Kuaför) EKLENDİ */}
+            <Text style={[styles.hairdresserName, chat.unreadCustomer > 0 && styles.hairdresserNameBold]} numberOfLines={1}>
+              {chat.hairdresserName && chat.hairdresserName.trim() !== '' ? chat.hairdresserName : 'Kuaför'}
             </Text>
             <Text style={styles.messageTime}>{timeStr}</Text>
           </View>
@@ -331,12 +342,12 @@ const styles = StyleSheet.create({
   chatCard: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADIUS.xl, padding: SPACING.md },
   chatCardUnread: { backgroundColor: 'rgba(167,139,250,0.1)', borderColor: COLORS.primary + '44' },
   avatarContainer: { position: 'relative' },
-  avatar: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center' },
+  avatar: { width: 54, height: 54, borderRadius: 27, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' }, // overflow eklendi
   avatarEmoji: { fontSize: 26 },
-  onlineDot: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.success, borderWidth: 2, borderColor: COLORS.background },
+  onlineDot: { position: 'absolute', bottom: 2, right: 2, width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.success, borderWidth: 2, borderColor: COLORS.background, zIndex: 10 },
   chatContent: { flex: 1, gap: 4 },
   chatTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  hairdresserName: { fontSize: FONTS.medium, color: COLORS.textPrimary, fontWeight: '600' },
+  hairdresserName: { flex: 1, fontSize: FONTS.medium, color: COLORS.textPrimary, fontWeight: '600', marginRight: SPACING.sm },
   hairdresserNameBold: { fontWeight: 'bold' },
   messageTime: { fontSize: 11, color: COLORS.textMuted },
   jobBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.xs },

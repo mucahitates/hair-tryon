@@ -11,6 +11,8 @@ import { AuthState, User } from '../types';
 interface AuthStore extends AuthState {
   // Oturum açma sonrası state'i günceller
   setAuth: (firebaseUser: any, user: User) => void;
+  // Coin bakiyesini anlık günceller
+  updateCoinBalance: (balance: number) => void;
   // Oturumu kapatır ve state'i sıfırlar
   signOut: () => Promise<void>;
   // Loading durumunu günceller
@@ -25,7 +27,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
   isLoading: true,
 
   // Firebase auth sonrası çağrılır
-  // app/index.tsx'deki onAuthStateChanged içinde kullanılır
   setAuth: (firebaseUser, user) => {
     set({
       firebaseUser,
@@ -34,6 +35,11 @@ export const useAuthStore = create<AuthStore>((set) => ({
       isLoading: false,
     });
   },
+
+  // Coin bakiyesini güncelleyen fonksiyon
+  updateCoinBalance: (balance) => set((state) => ({
+    user: state.user ? { ...state.user, coinBalance: balance } : null
+  })),
 
   // Oturumu kapat — Firebase auth + store sıfırla
   signOut: async () => {

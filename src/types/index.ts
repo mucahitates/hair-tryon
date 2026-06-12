@@ -19,6 +19,7 @@ export interface User {
   pushToken?: string;
   isActive: boolean;
   isBlocked: boolean;
+  coinbalance?:number;
   createdAt: number;
   lastActiveAt: number;
   settings?: {

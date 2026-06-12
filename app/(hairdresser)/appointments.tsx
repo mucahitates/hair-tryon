@@ -21,7 +21,15 @@ const TR_DAYS = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
 const today = new Date();
-const formatDate = (date: Date) => date.toISOString().split('T')[0];
+
+// 1. DÜZELTME: toISOString() yerine yerel saat formatlayıcı kullanıyoruz!
+const formatDate = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
+
 const todayStr = formatDate(today);
 
 const getDayColor = (count: number) => {
@@ -60,8 +68,11 @@ function DayDetailModal({ visible, onClose, date, appointments, onConfirm, onCan
     }
   }, [visible]);
 
-  const dateObj = new Date(date);
+  // 2. DÜZELTME: Tarih string'ini timezone kayması yaşamadan güvenle parse etme
+  const [y, m, d] = date.split('-').map(Number);
+  const dateObj = new Date(y, m - 1, d);
   const dayStr = `${TR_DAYS[dateObj.getDay()]} ${dateObj.getDate()} ${TR_MONTHS[dateObj.getMonth()]}`;
+  
   const activeApts = appointments.filter(a => a.status !== 'cancelled');
   const totalEarning = activeApts.reduce((acc: number, a: any) => acc + (a.price || 0), 0);
   const totalDuration = activeApts.reduce((acc: number, a: any) => acc + (a.duration || 0), 0);
@@ -281,8 +292,9 @@ export default function HairdresserAppointmentsScreen() {
 
   const getWeekDays = () => {
     const days = [];
+    const startDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     for (let i = 0; i < 7; i++) {
-      const d = new Date(today);
+      const d = new Date(startDay);
       d.setDate(d.getDate() + currentWeekOffset * 7 + i);
       days.push(d);
     }
@@ -322,9 +334,28 @@ export default function HairdresserAppointmentsScreen() {
   };
 
   const todayApts = getAppointmentsForDate(todayStr);
-  const todayEarning = todayApts.filter(a => a.status !== 'cancelled').reduce((acc, a) => acc + (a.price || 0), 0);
-  const confirmedCount = todayApts.filter(a => a.status === 'confirmed').length;
+  const nowTime = new Date().toTimeString().substring(0, 5);
+
+  const isCompleted = (a: any) =>
+    a.status === 'completed' ||
+    (a.status === 'confirmed' && (
+      (a.date === todayStr && a.time < nowTime) ||
+      a.date < todayStr
+    ));
+
+  const isConfirmed = (a: any) =>
+    a.status === 'confirmed' && !(
+      (a.date === todayStr && a.time < nowTime) ||
+      a.date < todayStr
+    );
+
+  const confirmedCount = todayApts.filter(isConfirmed).length;
   const pendingCount = todayApts.filter(a => a.status === 'pending').length;
+  const cancelledCount = todayApts.filter(a => a.status === 'cancelled').length;
+  const completedCount = todayApts.filter(isCompleted).length;
+  const todayEarning = todayApts
+    .filter(isCompleted)
+    .reduce((acc, a) => acc + (a.price || 0), 0);
 
   if (loading) {
     return (
@@ -363,25 +394,31 @@ export default function HairdresserAppointmentsScreen() {
               colors={[COLORS.primaryDark + '66', COLORS.primary + '33']}
               style={styles.todaySummaryGradient}
             >
-              <View style={styles.todaySummaryLeft}>
-                <Text style={styles.todaySummaryLabel}>Bugün</Text>
-                <Text style={styles.todaySummaryDate}>{today.getDate()} {TR_MONTHS[today.getMonth()]}</Text>
+              {/* Üst satır: Tarih + Kazanç */}
+              <View style={styles.todaySummaryTop}>
+                <View>
+                  <Text style={styles.todaySummaryLabel}>Bugün</Text>
+                  <Text style={styles.todaySummaryDate}>{today.getDate()} {TR_MONTHS[today.getMonth()]}</Text>
+                </View>
+                <View style={styles.todaySummaryEarning}>
+                  <Text style={styles.todaySummaryEarningLabel}>Kazanç</Text>
+                  <Text style={styles.todaySummaryEarningValue}>₺{todayEarning}</Text>
+                </View>
               </View>
+
+              {/* Alt satır: 4 stat */}
               <View style={styles.todaySummaryStats}>
-                <View style={styles.todaySummaryStat}>
-                  <Text style={[styles.todaySummaryStatValue, { color: '#34D399' }]}>{confirmedCount}</Text>
-                  <Text style={styles.todaySummaryStatLabel}>Onaylı</Text>
-                </View>
-                <View style={styles.todaySummaryDivider} />
-                <View style={styles.todaySummaryStat}>
-                  <Text style={[styles.todaySummaryStatValue, { color: '#FFB844' }]}>{pendingCount}</Text>
-                  <Text style={styles.todaySummaryStatLabel}>Bekleyen</Text>
-                </View>
-                <View style={styles.todaySummaryDivider} />
-                <View style={styles.todaySummaryStat}>
-                  <Text style={[styles.todaySummaryStatValue, { color: COLORS.primary }]}>₺{todayEarning}</Text>
-                  <Text style={styles.todaySummaryStatLabel}>Kazanç</Text>
-                </View>
+                {[
+                  { value: confirmedCount, label: 'Onaylı', color: '#34D399' },
+                  { value: pendingCount, label: 'Bekleyen', color: '#FFB844' },
+                  { value: cancelledCount, label: 'İptal', color: '#F87171' },
+                  { value: completedCount, label: 'Tamamlanan', color: '#60A5FA' },
+                ].map((stat) => (
+                  <View key={stat.label} style={styles.todaySummaryStat}>
+                    <Text style={[styles.todaySummaryStatValue, { color: stat.color }]}>{stat.value}</Text>
+                    <Text style={styles.todaySummaryStatLabel}>{stat.label}</Text>
+                  </View>
+                ))}
               </View>
             </LinearGradient>
           </View>
@@ -411,7 +448,10 @@ export default function HairdresserAppointmentsScreen() {
                 const colors = getDayColor(count);
                 const isToday = dateStr === todayStr;
                 const isSelected = dateStr === selectedDate;
-                const isPast = day < today && !isToday;
+                
+                // todayDate'i saatlerden arındırıyoruz ki geçmiş gün hesaplaması doğru olsun
+                const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+                const isPast = day < todayDate;
 
                 return (
                   <TouchableOpacity
@@ -460,12 +500,24 @@ export default function HairdresserAppointmentsScreen() {
           <View style={styles.upcomingSection}>
             <Text style={styles.sectionTitle}>Yaklaşan Randevular</Text>
             {appointments
-              .filter(a => a.date >= todayStr && a.status !== 'cancelled')
+              .filter(a => {
+                if (a.status === 'cancelled') return false;
+                if (a.date > todayStr) return true;
+                if (a.date === todayStr) {
+                  const nowTime = new Date().toTimeString().substring(0, 5);
+                  return a.time >= nowTime;
+                }
+                return false;
+              })
               .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`))
               .slice(0, 5)
               .map((apt) => {
                 const statusConf = getStatusConfig(apt.status);
-                const aptDate = new Date(apt.date);
+                
+                // 3. DÜZELTME: Yakın randevular için tarih parselama (Timezone korumalı)
+                const [y, m, d] = apt.date.split('-').map(Number);
+                const aptDate = new Date(y, m - 1, d);
+                
                 const isAptToday = apt.date === todayStr;
                 return (
                   <TouchableOpacity
@@ -568,15 +620,17 @@ const styles = StyleSheet.create({
 
   // Bugün özeti
   todaySummary: { marginHorizontal: SPACING.lg, marginBottom: SPACING.xl, borderRadius: RADIUS.xl, overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border },
-  todaySummaryGradient: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg, gap: SPACING.lg },
-  todaySummaryLeft: { gap: 2 },
+  todaySummaryGradient: { padding: SPACING.lg, gap: SPACING.md },
+  todaySummaryTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   todaySummaryLabel: { fontSize: FONTS.small, color: 'rgba(255,255,255,0.6)' },
   todaySummaryDate: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.white },
-  todaySummaryStats: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around' },
-  todaySummaryStat: { alignItems: 'center', gap: 2 },
+  todaySummaryEarning: { alignItems: 'flex-end' },
+  todaySummaryEarningLabel: { fontSize: FONTS.small, color: 'rgba(255,255,255,0.6)' },
+  todaySummaryEarningValue: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: '#34D399' },
+  todaySummaryStats: { flexDirection: 'row', gap: SPACING.sm },
+  todaySummaryStat: { flex: 1, alignItems: 'center', gap: 3, backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: RADIUS.lg, paddingVertical: SPACING.sm },
   todaySummaryStatValue: { fontSize: FONTS.large, fontWeight: 'bold' },
-  todaySummaryStatLabel: { fontSize: 10, color: 'rgba(255,255,255,0.5)' },
-  todaySummaryDivider: { width: 1, height: 30, backgroundColor: 'rgba(255,255,255,0.1)' },
+  todaySummaryStatLabel: { fontSize: 9, color: 'rgba(255,255,255,0.6)', textAlign: 'center' },
 
   // Takvim
   calendarSection: { marginHorizontal: SPACING.lg, marginBottom: SPACING.xl, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.xl, padding: SPACING.md, borderWidth: 1, borderColor: COLORS.border },

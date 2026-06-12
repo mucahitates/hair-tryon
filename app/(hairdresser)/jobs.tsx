@@ -12,9 +12,10 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 import {
   collection, query, where, onSnapshot, orderBy,
-  addDoc, serverTimestamp, doc, getDocs, setDoc,
+  addDoc, serverTimestamp, doc, getDocs, setDoc, runTransaction
 } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
+
 
 const { width } = Dimensions.get('window');
 
@@ -52,34 +53,60 @@ function BidModal({ visible, onClose, job, hairdresserId }: {
   }, [visible]);
 
   if (!job) return null;
-
   const handleSend = async () => {
     if (!price) {
       Alert.alert('Hata', 'Fiyat giriniz');
       return;
     }
     try {
+      // AuthStore'dan kuaförün aktif bilgilerini çekiyoruz
+      const { useAuthStore } = await import('../../src/stores/authStore');
+      const currentUser = useAuthStore.getState().user;
+
+      if (!currentUser?.uid) return;
+
+      // ─── 1) COIN KONTROLÜ VE DÜŞÜMÜ (YENİ EKLENEN KISIM) ───
+      const { processCoinTransaction } = await import('../../src/services/shared/coinService');
+      const coinResult = await processCoinTransaction(
+        currentUser.uid,
+        'hairdresser',
+        -10, // Teklif vermek 10 coin düşürür
+        `${job.customerName || 'Müşteri'} ilanına teklif verildi`
+      );
+
+      if (!coinResult.success) {
+        Alert.alert(
+          'Yetersiz Bakiye 🪙',
+          'Teklif vermek için 10 Coin gereklidir. Lütfen Coin satın alın.',
+          [{ text: 'Tamam' }]
+        );
+        return; // Bakiye yetersizse teklif kodunu hiç çalıştırmadan durdur!
+      }
+      // ────────────────────────────────────────────────────────
+
       const chatId = `chat_${job.id}_${hairdresserId}`;
       const autoMessage = `Merhaba, iş ilanınızı inceledim ve ₺${price} teklif ediyorum. ${note ? note : ''}`.trim();
 
-      // 1) Teklif kaydı
+      // 2) Teklif kaydı
       await addDoc(collection(db, 'bids'), {
         jobId: job.id,
         hairdresserId,
+        hairdresserName: currentUser?.displayName || 'Kuaför',
+        hairdresserPhotoUrl: currentUser?.photoURL || null,
         customerId: job.customerId || '',
         customerName: job.customerName || 'Kullanıcı',
         customerEmoji: job.customerEmoji || '👩',
-        service: job.service,
+        service: job.service || '',
         myPrice: parseInt(price),
-        customerBudget: job.budget,
+        customerBudget: job.budget || 0,
         status: 'pending',
-        note,
+        note: note || '',
         sentAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         chatId,
       });
 
-      // 2) Otomatik mesaj
+      // 3) Otomatik mesaj
       await addDoc(collection(db, 'chats', chatId, 'messages'), {
         text: autoMessage,
         senderId: hairdresserId,
@@ -89,16 +116,18 @@ function BidModal({ visible, onClose, job, hairdresserId }: {
         createdAt: serverTimestamp(),
       });
 
-      // 3) Chat dokümanı (merge: true — varsa üzerine yazar)
+      // 4) Chat dokümanı
       await setDoc(doc(db, 'chats', chatId), {
-        jobId: job.id,
+        jobId: job.id || '',
         hairdresserId,
+        hairdresserName: currentUser?.displayName || 'Kuaför',
+        hairdresserPhotoUrl: currentUser?.photoURL || null,
         customerId: job.customerId || '',
         customerName: job.customerName || 'Müşteri',
         customerEmoji: job.customerEmoji || '👩',
-        jobService: job.service,
-        bidPrice: parseInt(price),
-        customerBudget: job.budget,
+        jobService: job.service || '',
+        bidPrice: parseInt(price) || 0,
+        customerBudget: job.budget || 0,
         jobStatus: 'bidding',
         lastMessage: autoMessage,
         lastMessageTime: serverTimestamp(),
@@ -106,13 +135,18 @@ function BidModal({ visible, onClose, job, hairdresserId }: {
         unreadByHairdresser: false,
       }, { merge: true });
 
-      Alert.alert('Teklif Gönderildi ✅', `₺${price} teklifiniz başarıyla gönderildi!`);
+      // Coin bakiyesini AuthStore'da da anında güncelle (Ekranda anında düşmesi için)
+      useAuthStore.getState().updateCoinBalance(coinResult.newBalance || 0);
+
+      Alert.alert('Teklif Gönderildi ✅', `₺${price} teklifiniz başarıyla gönderildi!\nKalan Bakiyeniz: ${coinResult.newBalance} 🪙`);
       onClose();
     } catch (e) {
       console.error(e);
       Alert.alert('Hata', 'Teklif iletilemedi, lütfen tekrar deneyin.');
     }
   };
+
+
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -302,44 +336,46 @@ function JobCard({ job, allBids, onBid, onOpenPhoto }: {
           </View>
 
           {/* Fotoğraflar */}
-          <View style={styles.photosRow}>
-            <TouchableOpacity
-              style={styles.photoCard}
-              onPress={() => onOpenPhoto(job.currentPhotoUrl, job.customerEmoji || '👩', 'Şu Anki Görünüm')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.photoGradient}>
-                {job.currentPhotoUrl
-                  ? <Image source={{ uri: job.currentPhotoUrl }} style={styles.photoImage} />
-                  : <Text style={styles.photoEmoji}>{job.customerEmoji || '👩'}</Text>
-                }
-                <View style={styles.photoLabel}><Text style={styles.photoLabelText}>Şu An</Text></View>
-              </LinearGradient>
-            </TouchableOpacity>
+          {(job.currentPhotoUrl || job.beforePhotoUrl || job.aiResultUrl || job.afterPhotoUrl) && (
+            <View style={styles.photosRow}>
+              <TouchableOpacity
+                style={styles.photoCard}
+                onPress={() => onOpenPhoto(job.currentPhotoUrl || job.beforePhotoUrl, job.customerEmoji || '👩', 'Mevcut Saç')}
+                activeOpacity={0.85}
+              >
+                <LinearGradient colors={['rgba(255,255,255,0.1)', 'rgba(255,255,255,0.05)']} style={styles.photoGradient}>
+                  {(job.currentPhotoUrl || job.beforePhotoUrl)
+                    ? <Image source={{ uri: job.currentPhotoUrl || job.beforePhotoUrl }} style={styles.photoImage} />
+                    : <Text style={styles.photoEmoji}>{job.customerEmoji || '👩'}</Text>
+                  }
+                  <View style={styles.photoLabel}><Text style={styles.photoLabelText}>Şu An</Text></View>
+                </LinearGradient>
+              </TouchableOpacity>
 
-            <View style={styles.photoArrow}>
-              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.arrowBg}>
-                <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
-              </LinearGradient>
-              <Text style={styles.aiLabel}>AI</Text>
+              <View style={styles.photoArrow}>
+                <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.arrowBg}>
+                  <Ionicons name="arrow-forward" size={14} color={COLORS.white} />
+                </LinearGradient>
+                <Text style={styles.aiLabel}>AI</Text>
+              </View>
+
+              <TouchableOpacity
+                style={styles.photoCard}
+                onPress={() => onOpenPhoto(job.aiResultUrl || job.afterPhotoUrl, '✨', 'İstenen Görünüm')}
+                activeOpacity={0.85}
+              >
+                <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.photoGradient}>
+                  {(job.aiResultUrl || job.afterPhotoUrl)
+                    ? <Image source={{ uri: job.aiResultUrl || job.afterPhotoUrl }} style={styles.photoImage} />
+                    : <Text style={styles.photoEmoji}>✨</Text>
+                  }
+                  <View style={[styles.photoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
+                    <Text style={styles.photoLabelText}>İstenen</Text>
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
             </View>
-
-            <TouchableOpacity
-              style={styles.photoCard}
-              onPress={() => onOpenPhoto(job.aiResultUrl, '✨', 'İstenen Görünüm')}
-              activeOpacity={0.85}
-            >
-              <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '22']} style={styles.photoGradient}>
-                {job.aiResultUrl
-                  ? <Image source={{ uri: job.aiResultUrl }} style={styles.photoImage} />
-                  : <Text style={styles.photoEmoji}>✨</Text>
-                }
-                <View style={[styles.photoLabel, { backgroundColor: COLORS.primary + 'CC' }]}>
-                  <Text style={styles.photoLabelText}>İstenen</Text>
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          </View>
+          )}
 
           {/* Not */}
           {job.note && (
@@ -438,9 +474,30 @@ export default function HairdresserJobsScreen() {
   };
 
   const filteredJobs = jobs.filter(j => {
-    if (activeFilter === 'new') return j.isNew === true;
-    if (activeFilter === 'nearby') return j.customerCity?.includes('İstanbul');
-    if (activeFilter === 'matched') return ['Balayage', 'Keratin Bakım', 'Wolf Cut', 'Kesim'].includes(j.service);
+    // Sadece durumu "open" (açık) olan ilanları göster
+    if (j.status !== 'open') return false;
+
+    if (activeFilter === 'new') {
+      if (!j.createdAt) return true;
+      const jobDate = j.createdAt.toDate ? j.createdAt.toDate() : new Date(j.createdAt);
+      const isRecent = (new Date().getTime() - jobDate.getTime()) < 24 * 60 * 60 * 1000;
+      return isRecent;
+    }
+
+    if (activeFilter === 'nearby') {
+      // Kuaförün kendi şehri ile müşterinin şehrini eşleştir
+      if (!user?.city) return true;
+      return j.customerCity === user.city;
+    }
+
+    if (activeFilter === 'matched') {
+      const myServices = (user as any)?.services || [];
+      if (myServices.length > 0) {
+        return myServices.includes(j.serviceCategory) || myServices.includes(j.service);
+      }
+      return true;
+    }
+
     return true;
   });
 
@@ -473,16 +530,12 @@ export default function HairdresserJobsScreen() {
             {activeTab === 'jobs' ? `${filteredJobs.length} ilan` : `${myBids.length} teklif`}
           </Text>
         </View>
-        <TouchableOpacity style={styles.notifBtn} onPress={() => Alert.alert('Bildirimler', 'Henüz yeni bildirim yok.')}>
-          <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
-          <View style={styles.notifDot} />
-        </TouchableOpacity>
       </Animated.View>
 
       {/* Sekmeler */}
       <View style={styles.tabRow}>
         {[
-          { key: 'jobs', label: 'İş İlanları', count: jobs.length },
+          { key: 'jobs', label: 'İş İlanları', count: jobs.filter(j => j.status === 'open').length },
           { key: 'mybids', label: 'Tekliflerim', count: myBids.length },
         ].map((tab) => (
           <TouchableOpacity
@@ -520,7 +573,7 @@ export default function HairdresserJobsScreen() {
           </ScrollView>
 
           <FlatList
-            data={myBids.filter(b => b.status !== 'withdrawn')}
+            data={filteredJobs}
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.listContent}
             showsVerticalScrollIndicator={false}

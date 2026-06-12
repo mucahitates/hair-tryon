@@ -21,7 +21,7 @@ import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
 // FIREBASE IMPORTS
-import { collection, query, where, onSnapshot, orderBy, limit,doc,getDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, limit, doc, getDoc } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 
 const { width, height } = Dimensions.get('window');
@@ -77,10 +77,10 @@ const toggleStyles = StyleSheet.create({
 });
 
 // ── KART BİLEŞENLERİ ──────────────────────────────────────
-function FollowingCard({ item }: { item: any }) {
+function FollowingCard({ item, onPress }: { item: any; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
+    <TouchableOpacity onPress={onPress} onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.followingCard, { transform: [{ scale: scaleAnim }] }]}>
         <View style={styles.followingAvatarWrapper}>
           <View style={[styles.followingAvatar, item.isOnline && styles.followingAvatarOnline]}>
@@ -152,10 +152,10 @@ function CampaignCard({ item, onPress }: { item: any, onPress?: () => void }) {
   );
 }
 
-function TrendCard({ item }: { item: any }) {
+function TrendCard({ item, onPress }: { item: any, onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
+    <TouchableOpacity onPress={onPress} onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.93, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.trendCard, { transform: [{ scale: scaleAnim }] }]}>
         <Text style={styles.trendEmoji}>{item.emoji || '🔥'}</Text>
         <Text style={styles.trendStyle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.style}</Text>
@@ -171,15 +171,14 @@ function TrendCard({ item }: { item: any }) {
   );
 }
 
-function SponsoredCard({ item }: { item: any }) {
+function SponsoredCard({ item, onPress }: { item: any, onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   return (
-    <TouchableOpacity onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
+    <TouchableOpacity onPress={onPress} onPressIn={() => Animated.spring(scaleAnim, { toValue: 0.97, useNativeDriver: false }).start()} onPressOut={() => Animated.spring(scaleAnim, { toValue: 1, tension: 60, friction: 5, useNativeDriver: false }).start()} activeOpacity={1}>
       <Animated.View style={[styles.sponsoredCard, { transform: [{ scale: scaleAnim }] }]}>
         <View style={styles.sponsoredTag}><Text style={styles.sponsoredTagText}>{item.tag || 'Önerilen'}</Text></View>
         <View style={styles.sponsoredAvatar}><Text style={styles.sponsoredEmoji}>{item.emoji || '✂️'}</Text></View>
         <View style={styles.sponsoredInfo}>
-          {/* HATA BURADAYDI: item.name yerine item.salonName getirildi */}
           <Text style={styles.sponsoredName} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>
             {item.salonName || item.name || 'İsimsiz Salon'}
           </Text>
@@ -191,9 +190,9 @@ function SponsoredCard({ item }: { item: any }) {
             </View>
           </View>
         </View>
-        <TouchableOpacity style={styles.bookButton}>
+        <View style={styles.bookButton}>
           <Text style={styles.bookButtonText}>İncele</Text>
-        </TouchableOpacity>
+        </View>
       </Animated.View>
     </TouchableOpacity>
   );
@@ -223,16 +222,14 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
 }) {
   const slideAnim = useRef(new Animated.Value(height)).current;
   const router = useRouter();
-  const { user } = useAuthStore(); 
-  
-  // Kuaför bilgilerini tutacağımız yeni state
+  const { user } = useAuthStore();
+
   const [hairdresser, setHairdresser] = useState<any>(null);
 
   useEffect(() => {
     if (visible) {
       Animated.spring(slideAnim, { toValue: 0, tension: 60, friction: 10, useNativeDriver: true }).start();
-      
-      // Modalı açınca kampanya sahibinin profil bilgilerini Firebase'den çekiyoruz
+
       if (campaign?.hairdresserId) {
         const fetchHairdresser = async () => {
           const hdDoc = await getDoc(doc(db, 'hairdresserProfiles', campaign.hairdresserId));
@@ -244,7 +241,7 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
       }
     } else {
       Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start();
-      setHairdresser(null); // Kapatırken temizle
+      setHairdresser(null);
     }
   }, [visible, campaign]);
 
@@ -266,14 +263,14 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
       return;
     }
 
-    const pastCount = 0; // Şimdilik test amaçlı 0 kabul ediyoruz
+    const pastCount = 0; 
     const audience = campaign.targetAudience;
 
     if (audience === 'new' && pastCount > 0) {
       Alert.alert('Üzgünüz 😔', 'Bu kampanya sadece salonumuzu ilk kez ziyaret edecek müşterilerimiz için geçerlidir.');
       return;
     }
-    
+
     if (audience === 'loyal' && pastCount < 5) {
       Alert.alert('Sadakat Kampanyası', `Bu kampanyadan yararlanmak için salonda 5 randevu tamamlamış olmalısınız. (Sizin: ${pastCount})`);
       return;
@@ -287,12 +284,12 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
     }
 
     onClose();
-    
+
     router.push({
       pathname: '/(customer)/booking',
-      params: { 
+      params: {
         campaignId: campaign.id,
-        hairdresserId: campaign.hairdresserId 
+        hairdresserId: campaign.hairdresserId
       }
     } as any);
   };
@@ -308,9 +305,9 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={modalStyles.scrollContent}>
 
-            {/* ── 1. KUAFÖR KÜNYESİ (YENİ EKLENEN KISIM) ── */}
-            <TouchableOpacity 
-              style={modalStyles.hdProfileRow} 
+            {/* ── 1. KUAFÖR KÜNYESİ ── */}
+            <TouchableOpacity
+              style={modalStyles.hdProfileRow}
               activeOpacity={0.8}
               onPress={() => {
                 onClose();
@@ -326,7 +323,7 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
                   </View>
                 )}
               </View>
-              
+
               <View style={modalStyles.hdInfoContainer}>
                 <Text style={modalStyles.hdSalonName} numberOfLines={1}>
                   {hairdresser?.salonName || campaign.salon || 'Kuaför Salonu'}
@@ -344,7 +341,7 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
               </View>
             </TouchableOpacity>
 
-            {/* ── 2. KAMPANYA BAŞLIĞI VE EMOJİSİ (AYNI KALAN KISIM) ── */}
+            {/* ── 2. KAMPANYA BAŞLIĞI VE EMOJİSİ ── */}
             <View style={modalStyles.heroSection}>
               <LinearGradient colors={[COLORS.primary + '33', COLORS.primaryDark + '11']} style={modalStyles.heroCircle}>
                 <Text style={modalStyles.heroEmoji}>{campaign.emoji || '🎁'}</Text>
@@ -446,16 +443,11 @@ function CustomerCampaignModal({ visible, campaign, onClose, onBook }: {
   );
 }
 
-// Stillerin sadece yeni eklenen Kuaför Künyesi kısmını aşağıya ekliyorum
-// Kendi modalStyles objenin İÇİNE (heroSection'ın üstüne) şu yeni stilleri yapıştır:
 const modalStyles = StyleSheet.create({
-  // ... (overlay, container, handle, scrollContent aynı kalacak) ...
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },
   container: { backgroundColor: '#120A1F', borderTopLeftRadius: 32, borderTopRightRadius: 32, maxHeight: height * 0.90, overflow: 'hidden' },
   handle: { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: 2, alignSelf: 'center', marginTop: SPACING.md },
   scrollContent: { padding: SPACING.lg, paddingBottom: 40 },
-
-  // --- YENİ EKLENEN KUAFÖR KÜNYESİ STİLLERİ ---
   hdProfileRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.04)', padding: 12, borderRadius: RADIUS.xl, marginBottom: SPACING.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   hdAvatarContainer: { marginRight: 12 },
   hdAvatarImg: { width: 50, height: 50, borderRadius: 25 },
@@ -466,36 +458,28 @@ const modalStyles = StyleSheet.create({
   hdName: { fontSize: FONTS.small, color: COLORS.textMuted },
   hdRatingContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFB84415', paddingHorizontal: 10, paddingVertical: 6, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#FFB84433', gap: 4 },
   hdRatingText: { color: '#FFB844', fontWeight: 'bold', fontSize: FONTS.small },
-  // --------------------------------------------
-
   heroSection: { alignItems: 'center', marginTop: SPACING.xs, marginBottom: SPACING.md },
   heroCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: SPACING.md, borderWidth: 1, borderColor: COLORS.primary + '44' },
   heroEmoji: { fontSize: 42 },
   title: { fontSize: 26, fontWeight: '900', color: COLORS.textPrimary, textAlign: 'center', marginBottom: SPACING.sm, lineHeight: 32 },
-  
   discountRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 4 },
   discountBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#34D399' + '18', paddingVertical: 8, paddingHorizontal: 16, borderRadius: RADIUS.full, borderWidth: 1, borderColor: '#34D399' + '55' },
   discountText: { color: '#34D399', fontWeight: 'bold', fontSize: FONTS.medium },
-
   urgencyBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#FFB844' + '15', padding: SPACING.sm, borderRadius: RADIUS.md, borderWidth: 1, borderColor: '#FFB844' + '33', marginBottom: SPACING.md },
-
   descBox: { backgroundColor: 'rgba(255,255,255,0.03)', padding: SPACING.md, borderRadius: RADIUS.lg, marginBottom: SPACING.lg },
   descText: { color: COLORS.textSecondary, fontSize: FONTS.regular, lineHeight: 24, textAlign: 'center' },
-
   infoGrid: { gap: SPACING.sm, marginBottom: SPACING.xl },
   infoItem: { flexDirection: 'row', alignItems: 'center', gap: SPACING.md, backgroundColor: 'rgba(255,255,255,0.04)', padding: SPACING.md, borderRadius: RADIUS.xl, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)' },
   infoIconBox: { width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.primary + '18', justifyContent: 'center', alignItems: 'center' },
   infoTextCol: { flex: 1 },
   infoLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 2, textTransform: 'uppercase', letterSpacing: 0.5 },
   infoValue: { fontSize: FONTS.regular, color: COLORS.textPrimary, fontWeight: '700' },
-
   servicesSection: { marginBottom: SPACING.md },
   servicesHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: SPACING.sm, paddingLeft: 4 },
   servicesTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
   servicesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   serviceChip: { backgroundColor: 'rgba(255,255,255,0.06)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: RADIUS.full, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' },
   serviceChipText: { fontSize: FONTS.small, color: COLORS.white, fontWeight: '500' },
-
   footer: { flexDirection: 'row', gap: SPACING.sm, padding: SPACING.lg, paddingBottom: 34, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', backgroundColor: 'rgba(18,10,31,0.95)' },
   cancelBtn: { flex: 1, paddingVertical: 16, borderRadius: RADIUS.xl, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center', justifyContent: 'center' },
   cancelBtnText: { color: COLORS.white, fontWeight: '600', fontSize: FONTS.regular },
@@ -534,6 +518,7 @@ export default function CustomerHomeScreen() {
   const contentOpacity = useRef(new Animated.Value(0)).current;
   const bannerScale = useRef(new Animated.Value(0.95)).current;
 
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(headerAnim, { toValue: 1, duration: 500, useNativeDriver: false }),
@@ -563,14 +548,43 @@ export default function CustomerHomeScreen() {
       setFavorites(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     }));
 
+    // 1 & 2: Süresi geçmiş ve kontenjanı dolmuş kampanyaları FİLTRELE
     const campQ = query(collection(db, 'campaigns'), where('status', '==', 'active'));
     unsubs.push(onSnapshot(campQ, snap => {
-      setCampaigns(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      const now = new Date();
+      const validCampaigns = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+        .filter((camp: any) => {
+          // Bitiş tarihi kontrolü (Günün sonuna kadar geçerli)
+          if (camp.endDate) {
+            const end = new Date(camp.endDate);
+            end.setHours(23, 59, 59, 999);
+            if (end < now) return false;
+          }
+          // Limit (kontenjan) kontrolü
+          if (camp.maxUsage) {
+            const usage = camp.usageCount || 0;
+            if (usage >= camp.maxUsage) return false;
+          }
+          return true;
+        });
+      setCampaigns(validCampaigns);
     }));
 
-    const trendQ = query(collection(db, 'trending'), limit(5));
+    // 3: Popüler (Trending) alanını Portfolyolardan (En çok beğeni alanlardan) doldur
+    const trendQ = query(collection(db, 'portfolio'), orderBy('likes', 'desc'), limit(5));
     unsubs.push(onSnapshot(trendQ, snap => {
-      setTrending(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setTrending(snap.docs.map(d => {
+        const data = d.data();
+        return {
+          id: d.id,
+          emoji: data.afterEmoji || '🔥',
+          style: data.service || 'Stil',
+          trend: data.category || 'Popüler',
+          likes: data.likes || 0,
+          hairdresserId: data.hairdresserId, // Tıklanınca profile gitmesi için
+          ...data
+        };
+      }));
     }));
 
     const sugQ = query(collection(db, 'hairdresserProfiles'), orderBy('averageRating', 'desc'), limit(5));
@@ -614,10 +628,7 @@ export default function CustomerHomeScreen() {
               <Text style={styles.coinBadgeEmoji}>🪙</Text>
               <Text style={styles.coinBadgeText}>{user?.coinBalance || 0}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.notifButton}>
-              <Ionicons name="notifications-outline" size={22} color={COLORS.textPrimary} />
-              <View style={styles.notifDot} />
-            </TouchableOpacity>
+            
           </View>
         </Animated.View>
 
@@ -666,7 +677,7 @@ export default function CustomerHomeScreen() {
           ) : (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.followingList}>
               {following.map((item) => (
-                <FollowingCard key={item.id} item={item} />
+                <FollowingCard key={item.id} item={item} onPress={() => router.push(`/hairdresser/${item.hairdresserId}` as any)} />
               ))}
             </ScrollView>
           )}
@@ -738,19 +749,39 @@ export default function CustomerHomeScreen() {
 
             {/* POPÜLER */}
             <FadeTabPanel active={discoverTab === 1}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}>
-                {trending.map((item) => (
-                  <TrendCard key={item.id} item={item} />
-                ))}
-              </ScrollView>
+              {trending.length === 0 ? (
+                <View style={styles.emptyDiscover}>
+                  <Text style={styles.emptyDiscoverText}>Henüz popüler içerik yok</Text>
+                </View>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: SPACING.md, paddingBottom: SPACING.md }}>
+                  {trending.map((item) => (
+                    <TrendCard 
+                      key={item.id} 
+                      item={item} 
+                      onPress={() => router.push(`/hairdresser/${item.hairdresserId}` as any)} 
+                    />
+                  ))}
+                </ScrollView>
+              )}
             </FadeTabPanel>
 
-            {/* ÖNERİLEN KUAFÖRLER */}
+            {/* 4: ÖNERİLEN KUAFÖRLER KARTI İNCELE BUTONU ÇÖZÜMÜ */}
             <FadeTabPanel active={discoverTab === 2}>
               <View style={styles.discoverList}>
-                {suggested.map((item) => (
-                  <SponsoredCard key={item.id} item={item} />
-                ))}
+                {suggested.length === 0 ? (
+                  <View style={styles.emptyDiscover}>
+                    <Text style={styles.emptyDiscoverText}>Henüz önerilen kuaför yok</Text>
+                  </View>
+                ) : (
+                  suggested.map((item) => (
+                    <SponsoredCard 
+                      key={item.id} 
+                      item={item} 
+                      onPress={() => router.push(`/hairdresser/${item.id}` as any)} 
+                    />
+                  ))
+                )}
               </View>
             </FadeTabPanel>
           </View>
@@ -852,7 +883,8 @@ const styles = StyleSheet.create({
   coinBadgeEmoji: { fontSize: 14 },
   coinBadgeText: { fontSize: FONTS.small, fontWeight: 'bold', color: '#D4A017' },
   notifButton: { width: 40, height: 40, borderRadius: RADIUS.md, backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: COLORS.border, justifyContent: 'center', alignItems: 'center' },
-  notifDot: { position: 'absolute', top: 8, right: 8, width: 7, height: 7, borderRadius: 4, backgroundColor: COLORS.error, borderWidth: 1.5, borderColor: COLORS.background },
+  notifBadge: { position: 'absolute', top: -4, right: -4, backgroundColor: COLORS.error, borderRadius: 10, minWidth: 18, height: 18, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 4, borderWidth: 1.5, borderColor: COLORS.background },
+  notifBadgeText: { fontSize: 10, color: COLORS.white, fontWeight: 'bold' },
   bannerWrapper: { paddingHorizontal: SPACING.lg, marginBottom: SPACING.xl },
   banner: { borderRadius: RADIUS.xl, padding: SPACING.lg, flexDirection: 'row', alignItems: 'center', minHeight: 160, overflow: 'hidden' },
   bannerContent: { flex: 1, gap: SPACING.xs },

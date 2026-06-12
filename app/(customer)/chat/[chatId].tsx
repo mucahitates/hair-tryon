@@ -283,6 +283,23 @@ export default function ChatScreen() {
     const text = message.trim();
     setMessage('');
     await sendMessage(chatId as string, user.uid, user.role as 'customer' | 'hairdresser', text);
+
+    {/*
+    // Kuaföre bildirim gönder
+    if (chatInfo?.hairdresserId) {
+      const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+      const { db } = await import('../../../src/services/firebase');
+      await addDoc(collection(db, 'notifications'), {
+        userId: chatInfo.hairdresserId,
+        type: 'message',
+        title: 'Yeni Mesaj 💬',
+        body: text.length > 50 ? text.substring(0, 50) + '...' : text,
+        relatedId: chatId,
+        isRead: false,
+        createdAt: serverTimestamp(),
+      });
+    }  
+    */}
   };
 
   const handleSendPhoto = async () => {

@@ -190,7 +190,18 @@ export default function BookingScreen() {
                     usageCount: increment(1),
                 });
             }
-
+            // Kuaföre bildirim gönder
+            const { addDoc: addNotif, collection: col, serverTimestamp: sts } = await import('firebase/firestore');
+            const { db: database } = await import('../../src/services/firebase');
+            await addNotif(col(database, 'notifications'), {
+                userId: hairdresserId,
+                type: 'appointment_request',
+                title: 'Yeni Randevu Talebi! 📅',
+                body: `${user.displayName || 'Müşteri'} ${selectedDate} tarihinde ${selectedTime} için randevu talep etti.`,
+                relatedId: hairdresserId,
+                isRead: false,
+                createdAt: sts(),
+            });
             Alert.alert(
                 'Randevu Talebiniz Alındı! 🎉',
                 `${hairdresser?.salonName} ile ${selectedDate} tarihinde ${selectedTime} saatinde görüşmek üzere.`,

@@ -24,9 +24,10 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
-// FIREBASE IMPORTS
+// FIREBASE IMPORTS (Storage fonksiyonları da eklendi)
 import { collection, query, where, onSnapshot, doc, addDoc, deleteDoc, updateDoc, orderBy, serverTimestamp } from 'firebase/firestore';
-import { db } from '../../src/services/firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { db, storage } from '../../src/services/firebase';
 
 const { width, height } = Dimensions.get('window');
 
@@ -96,7 +97,7 @@ function DetailModal({ visible, onClose, item }: {
     try {
       const docRef = doc(db, 'portfolio', item.id);
       await updateDoc(docRef, {
-        likes: item.likes + (nextLikeState ? 1 : 0),
+        likes: item.likes + (nextLikeState ? 1 : -1),
         isLiked: nextLikeState
       });
     } catch (e) {
@@ -229,7 +230,7 @@ function DetailModal({ visible, onClose, item }: {
                   <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
                     <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color={isLiked ? '#F87171' : COLORS.textSecondary} />
                   </Animated.View>
-                  <Text style={detailStyles.actionCount}>{item.likes + (isLiked && !item.isLiked ? 1 : 0)}</Text>
+                  <Text style={detailStyles.actionCount}>{item.likes}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={detailStyles.actionBtn}>
                   <Ionicons name="chatbubble-outline" size={24} color={COLORS.textSecondary} />
@@ -287,7 +288,7 @@ const detailStyles = StyleSheet.create({
 function AddPortfolioModal({ visible, onClose, onAdd }: {
   visible: boolean;
   onClose: () => void;
-  onAdd: (item: any) => void;
+  onAdd: (item: any, isUploading: (state: boolean) => void) => void;
 }) {
   const [service, setService] = useState('');
   const [category, setCategory] = useState('');
@@ -297,6 +298,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [beforePhoto, setBeforePhoto] = useState<string | null>(null);
   const [afterPhoto, setAfterPhoto] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false); // Yüklenme state'i
 
   const slideAnim = useRef(new Animated.Value(height)).current;
 
@@ -306,7 +308,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
     } else {
       Animated.timing(slideAnim, { toValue: height, duration: 250, useNativeDriver: true }).start(() => {
         setService(''); setCategory(''); setPrice(''); setDuration(''); setNote(''); setIsAnonymous(false);
-        setBeforePhoto(null); setAfterPhoto(null);
+        setBeforePhoto(null); setAfterPhoto(null); setIsUploading(false);
       });
     }
   }, [visible]);
@@ -337,6 +339,8 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
     if (!service || !category || !price || !duration) {
       Alert.alert('Eksik Bilgi', 'Zorunlu alanları doldurun'); return;
     }
+    
+    // İşlemin yüklendiğini modal'a bildiren state fonksiyonu ekledik
     onAdd({
       service,
       category,
@@ -352,27 +356,24 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
       likes: 0, comments: 0, views: 0, saves: 0,
       isLiked: false, isSaved: false, isHidden: false,
       customerConsent: true, fromJob: false, customerName: null, colorInfo: null,
-    });
-    onClose();
+    }, setIsUploading); 
   };
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
-      {/* ÇÖZÜM 2: Klavyenin kutuları kapatmasını engellemek için sarmaladık */}
       <KeyboardAvoidingView
         style={addStyles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={onClose} activeOpacity={1} />
+        <TouchableOpacity style={StyleSheet.absoluteFill} onPress={!isUploading ? onClose : undefined} activeOpacity={1} />
         <Animated.View style={[addStyles.container, { transform: [{ translateY: slideAnim }] }]}>
           <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
 
           <View style={addStyles.dragHandle} />
 
-          {/* ÇÖZÜM 1: Başlık alanını satır yaptık ve X butonu ekledik */}
           <View style={addStyles.headerRow}>
             <Text style={addStyles.title}>Yeni Çalışma Ekle</Text>
-            <TouchableOpacity onPress={onClose} style={addStyles.closeBtn}>
+            <TouchableOpacity onPress={onClose} style={addStyles.closeBtn} disabled={isUploading}>
               <Ionicons name="close" size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
           </View>
@@ -381,7 +382,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
 
             {/* Fotoğraf Seçimi */}
             <View style={addStyles.photosRow}>
-              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('before')}>
+              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('before')} disabled={isUploading}>
                 <LinearGradient colors={['rgba(255,255,255,0.06)', 'rgba(255,255,255,0.02)']} style={addStyles.photoCardInner}>
                   {beforePhoto ? (
                     <Image source={{ uri: beforePhoto }} style={addStyles.selectedPreview} />
@@ -401,7 +402,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
                 </LinearGradient>
               </View>
 
-              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('after')}>
+              <TouchableOpacity style={addStyles.photoCard} onPress={() => handlePickImage('after')} disabled={isUploading}>
                 <LinearGradient colors={[COLORS.primary + '22', COLORS.primary + '08']} style={[addStyles.photoCardInner, { borderColor: COLORS.primary + '44' }]}>
                   {afterPhoto ? (
                     <Image source={{ uri: afterPhoto }} style={addStyles.selectedPreview} />
@@ -426,6 +427,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
                   onChangeText={setService}
                   placeholder="Balayage, Wolf Cut..."
                   placeholderTextColor={COLORS.textMuted}
+                  editable={!isUploading}
                 />
               </View>
 
@@ -438,6 +440,7 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
                       key={cat}
                       style={[addStyles.chip, category === cat && addStyles.chipActive]}
                       onPress={() => setCategory(cat)}
+                      disabled={isUploading}
                     >
                       <Text style={[addStyles.chipText, category === cat && addStyles.chipTextActive]}>{cat}</Text>
                     </TouchableOpacity>
@@ -449,11 +452,11 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
               <View style={addStyles.row}>
                 <View style={[addStyles.field, { flex: 1 }]}>
                   <Text style={addStyles.label}>Ücret (₺) *</Text>
-                  <TextInput style={addStyles.input} value={price} onChangeText={(t) => setPrice(t.replace(/\D/g, ''))} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                  <TextInput style={addStyles.input} value={price} onChangeText={(t) => setPrice(t.replace(/\D/g, ''))} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} editable={!isUploading} />
                 </View>
                 <View style={[addStyles.field, { flex: 1 }]}>
                   <Text style={addStyles.label}>Süre (dk) *</Text>
-                  <TextInput style={addStyles.input} value={duration} onChangeText={(t) => setDuration(t.replace(/\D/g, ''))} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} />
+                  <TextInput style={addStyles.input} value={duration} onChangeText={(t) => setDuration(t.replace(/\D/g, ''))} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} editable={!isUploading} />
                 </View>
               </View>
 
@@ -467,11 +470,12 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
                   placeholder="İşlem hakkında not..."
                   placeholderTextColor={COLORS.textMuted}
                   multiline
+                  editable={!isUploading}
                 />
               </View>
 
               {/* Anonim */}
-              <TouchableOpacity style={addStyles.anonRow} onPress={() => setIsAnonymous(!isAnonymous)}>
+              <TouchableOpacity style={addStyles.anonRow} onPress={() => setIsAnonymous(!isAnonymous)} disabled={isUploading}>
                 <View style={[addStyles.checkbox, isAnonymous && addStyles.checkboxActive]}>
                   {isAnonymous && <Ionicons name="checkmark" size={14} color={COLORS.white} />}
                 </View>
@@ -484,10 +488,16 @@ function AddPortfolioModal({ visible, onClose, onAdd }: {
           </ScrollView>
 
           <View style={addStyles.footer}>
-            <TouchableOpacity onPress={handleAdd}>
-              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={addStyles.submitBtn}>
-                <Text style={addStyles.submitText}>Portfolyoya Ekle</Text>
-                <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+            <TouchableOpacity onPress={handleAdd} disabled={isUploading}>
+              <LinearGradient colors={isUploading ? ['#555', '#444'] : [COLORS.primary, COLORS.primaryDark]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={addStyles.submitBtn}>
+                {isUploading ? (
+                  <ActivityIndicator color={COLORS.white} />
+                ) : (
+                  <>
+                    <Text style={addStyles.submitText}>Portfolyoya Ekle</Text>
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.white} />
+                  </>
+                )}
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -688,17 +698,56 @@ export default function HairdresserPortfolioScreen() {
     return () => unsubs.forEach(u => u());
   }, [user?.uid]);
 
-  // Yeni portfolyo dökümanı ekleme metodu
-  const handleAddPortfolioItem = async (newItem: any) => {
+  // ── FOTOĞRAFLARI BLOB FORMATINDA FIREBASE STORAGE'A YÜKLEYEN YARDIMCI FONKSİYON ──
+  const uploadImageAsync = async (uri: string, type: 'before' | 'after') => {
+    // 1. Yerel dosyayı fetch ile al ve Blob (binary) formatına çevir
+    const response = await fetch(uri);
+    const blob = await response.blob();
+
+    // 2. Storage'da rastgele bir isimle dosya yolu (referansı) oluştur
+    const fileRef = ref(storage, `portfolios/${user!.uid}/${Date.now()}_${type}.jpg`);
+    
+    // 3. Blob verisini bu yola upload et
+    await uploadBytes(fileRef, blob);
+    
+    // 4. Firebase'in oluşturduğu evrensel indirme linkini (URL) al ve geri döndür
+    return await getDownloadURL(fileRef);
+  };
+
+
+  // Yeni portfolyo dökümanı ekleme metodu (Güncellendi)
+  const handleAddPortfolioItem = async (newItem: any, setIsUploading: (val: boolean) => void) => {
     if (!user?.uid) return;
+    
+    setIsUploading(true); // Yükleme animasyonunu başlat
+    
     try {
+      let beforePhotoUrl = null;
+      let afterPhotoUrl = null;
+
+      // URL 'file://' ile başlıyorsa yerel bir dosyadır, Storage'a yükle!
+      if (newItem.beforePhoto?.startsWith('file://')) {
+        beforePhotoUrl = await uploadImageAsync(newItem.beforePhoto, 'before');
+      }
+      if (newItem.afterPhoto?.startsWith('file://')) {
+        afterPhotoUrl = await uploadImageAsync(newItem.afterPhoto, 'after');
+      }
+
+      // Veritabanına (Firestore) artık yerel yolları değil, Firebase URL'lerini kaydet
       await addDoc(collection(db, 'portfolio'), {
         ...newItem,
+        beforePhoto: beforePhotoUrl || null,
+        afterPhoto: afterPhotoUrl || null,
         hairdresserId: user.uid,
         createdAt: serverTimestamp(),
       });
+      
+      setShowAddModal(false); // Başarılı olunca pencereyi kapat
     } catch (e) {
-      Alert.alert('Hata', 'Çalışma portfolyoya eklenemedi.');
+      console.error(e);
+      Alert.alert('Hata', 'Fotoğraflar yüklenirken bir sorun oluştu.');
+    } finally {
+      setIsUploading(false); // Animasyonu durdur
     }
   };
 
@@ -734,8 +783,8 @@ export default function HairdresserPortfolioScreen() {
     );
   }
 
-  const totalLikes = portfolio.reduce((a, b) => a + b.likes, 0);
-  const totalViews = portfolio.reduce((a, b) => a + b.views, 0);
+  const totalLikes = portfolio.reduce((a, b) => a + (b.likes || 0), 0);
+  const totalViews = portfolio.reduce((a, b) => a + (b.views || 0), 0);
 
   return (
     <View style={styles.container}>
@@ -876,7 +925,7 @@ const styles = StyleSheet.create({
 
   // Avatar
   avatarWrapper: { position: 'relative' },
-  avatar: { width: 86, height: 86, borderRadius: 43, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.primary },
+  avatar: { width: 86, height: 86, borderRadius: 43, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.primary, overflow: 'hidden' }, // overflow eklendi
   avatarEmoji: { fontSize: 38 },
   avatarEditBadge: { position: 'absolute', bottom: 0, right: 0, width: 26, height: 26, borderRadius: 13, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: '#090514' },
 

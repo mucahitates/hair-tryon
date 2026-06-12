@@ -1,28 +1,22 @@
-// ─────────────────────────────────────────────────────────────
-// KUAFÖR PROFİL SAYFASI (app/hairdresser/[id].tsx)
-// Firestore bağlantılı — hairdresserProfiles, portfolioItems, reviews, availability
-// ─────────────────────────────────────────────────────────────
-
+// app/(customer)/hairdresser/[id].tsx veya app/hairdresser/[id].tsx
 import { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Animated, Dimensions, Modal, TextInput, Alert, ActivityIndicator,
+  Animated, Dimensions, Modal, TextInput, Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  doc, getDoc, collection, query, where,
+  doc, collection, query, where,
   getDocs, orderBy, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../../src/services/firebase';
 import { useAuthStore } from '../../src/stores/authStore';
 import { COLORS, FONTS, SPACING, RADIUS } from '../../src/constants/theme';
 
-
 const { width } = Dimensions.get('window');
 
-// ─── TİPLER ────────────────────────────────────────────────
 type TabType = 'portfolio' | 'services' | 'reviews';
 
 interface HairdresserProfile {
@@ -36,6 +30,7 @@ interface HairdresserProfile {
   phone?: string;
   instagram?: string;
   emoji: string;
+  profileImageUrl?: string | null;
   specializations: string[];
   averageRating: number;
   totalJobs: number;
@@ -65,8 +60,13 @@ interface PortfolioItem {
   afterEmoji: string;
   likes: number;
   note?: string;
-  imageUrl?: string | null;
+  beforePhoto?: string | null;
+  afterPhoto?: string | null;
+  beforePhotoUrl?: string | null;
+  afterPhotoUrl?: string | null;
   beforeImageUrl?: string | null;
+  afterImageUrl?: string | null;
+  imageUrl?: string | null;
 }
 
 interface Review {
@@ -88,12 +88,6 @@ interface Service {
   duration: number;
 }
 
-interface AvailabilitySlot {
-  date: string;
-  times: string[];
-}
-
-// ─── YARDIMCI ──────────────────────────────────────────────
 const TR_DAYS_SHORT = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt'];
 const TR_MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 
@@ -112,7 +106,7 @@ function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
   );
 }
 
-// ─── PORTFOLYo GRID KARTI ──────────────────────────────────
+// ─── PORTFOLYO GRID KARTI ──────────────────────────────────
 function PortfolioGridCard({ item, onPress }: { item: PortfolioItem; onPress: () => void }) {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const ITEM_SIZE = (width - (SPACING.lg * 2) - 12) / 2;
@@ -126,6 +120,11 @@ function PortfolioGridCard({ item, onPress }: { item: PortfolioItem; onPress: ()
   };
   const catColor = categoryColors[item.category] || COLORS.primary;
 
+  // Akıllı Fotoğraf Kontrolü (Hangi isimle kaydedildiyse otomatik eşleşir)
+  const beforeImg = item.beforePhoto || item.beforePhotoUrl || item.beforeImageUrl;
+  const afterImg = item.afterPhoto || item.afterPhotoUrl || item.afterImageUrl || item.imageUrl;
+  const isSingleImage = !!item.imageUrl && !beforeImg && !item.afterPhotoUrl && !item.afterImageUrl;
+
   return (
     <TouchableOpacity
       onPress={onPress}
@@ -135,15 +134,30 @@ function PortfolioGridCard({ item, onPress }: { item: PortfolioItem; onPress: ()
     >
       <Animated.View style={[{ width: ITEM_SIZE }, { transform: [{ scale: scaleAnim }] }]}>
         <View style={[portGridStyles.cardContainer, { borderColor: catColor + '55', shadowColor: catColor }]}>
-          <View style={portGridStyles.splitContainer}>
-            <LinearGradient colors={['#1A1C29', '#12141F']} style={portGridStyles.halfSide}>
-              <Text style={portGridStyles.emojiBefore}>{item.beforeEmoji}</Text>
-            </LinearGradient>
-            <LinearGradient colors={['#2A1F3D', '#1A0F2E']} style={portGridStyles.halfSide}>
-              <Text style={portGridStyles.emojiAfter}>{item.afterEmoji}</Text>
-            </LinearGradient>
-            <View style={portGridStyles.centerDivider} />
-          </View>
+
+          {isSingleImage ? (
+            <Image source={{ uri: item.imageUrl! }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          ) : (
+            <View style={portGridStyles.splitContainer}>
+              <LinearGradient colors={['#1A1C29', '#12141F']} style={portGridStyles.halfSide}>
+                {beforeImg ? (
+                  <Image source={{ uri: beforeImg }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                ) : (
+                  <Text style={portGridStyles.emojiBefore}>{item.beforeEmoji || '😐'}</Text>
+                )}
+              </LinearGradient>
+
+              <LinearGradient colors={['#2A1F3D', '#1A0F2E']} style={portGridStyles.halfSide}>
+                {afterImg ? (
+                  <Image source={{ uri: afterImg }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                ) : (
+                  <Text style={portGridStyles.emojiAfter}>{item.afterEmoji || '✨'}</Text>
+                )}
+              </LinearGradient>
+              <View style={portGridStyles.centerDivider} />
+            </View>
+          )}
+
           <View style={[portGridStyles.topBadge, { backgroundColor: catColor + '33', borderColor: catColor + '55' }]}>
             <Text style={[portGridStyles.topBadgeText, { color: catColor }]}>{item.category}</Text>
           </View>
@@ -152,7 +166,7 @@ function PortfolioGridCard({ item, onPress }: { item: PortfolioItem; onPress: ()
             <View style={portGridStyles.metaRow}>
               <View style={portGridStyles.metaItem}>
                 <Ionicons name="heart" size={13} color="#F87171" />
-                <Text style={portGridStyles.metaText}>{item.likes}</Text>
+                <Text style={portGridStyles.metaText}>{item.likes || 0}</Text>
               </View>
               <View style={portGridStyles.priceBadge}>
                 <Text style={portGridStyles.priceText}>₺{item.price}</Text>
@@ -183,33 +197,85 @@ const portGridStyles = StyleSheet.create({
   priceText: { color: COLORS.white, fontSize: 10, fontWeight: '900' },
 });
 
-// ─── PORTFOLYo DETAY MODALI ────────────────────────────────
-function PortfolioDetailModal({ visible, onClose, item }: {
-  visible: boolean; onClose: () => void; item: PortfolioItem | null;
+// ─── PORTFOLYO DETAY MODALI ────────────────────────────────
+function PortfolioDetailModal({ visible, onClose, item, userId }: {
+  visible: boolean; onClose: () => void; item: PortfolioItem | null; userId?: string;
 }) {
   const [activeTab, setActiveTab] = useState<'before' | 'after'>('after');
   const [isLiked, setIsLiked] = useState(false);
+  const [likes, setLikes] = useState(0);
+  const [comments, setComments] = useState<any[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
   const slideAnim = useRef(new Animated.Value(600)).current;
   const likeAnim = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     if (visible && item) {
       setActiveTab('after');
+      setLikes(item.likes || 0);
+      setIsLiked(false);
+      setCommentText('');
       Animated.spring(slideAnim, { toValue: 0, tension: 50, friction: 8, useNativeDriver: true }).start();
+
+      // Yorumları dinle
+      const { collection, query, where, orderBy, onSnapshot } = require('firebase/firestore');
+      const q = query(
+        collection(db, 'portfolioComments'),
+        where('portfolioId', '==', item.id),
+        orderBy('createdAt', 'asc')
+      );
+      const unsub = onSnapshot(q, (snap: any) => {
+        setComments(snap.docs.map((d: any) => ({ id: d.id, ...d.data() })));
+      });
+      return () => unsub();
     } else {
       Animated.timing(slideAnim, { toValue: 600, duration: 250, useNativeDriver: true }).start();
     }
-  }, [visible]);
+  }, [visible, item]);
 
   if (!item) return null;
 
-  const handleLike = () => {
-    setIsLiked(!isLiked);
+  const handleLike = async () => {
+    const next = !isLiked;
+    setIsLiked(next);
+    setLikes(prev => prev + (next ? 1 : -1));
     Animated.sequence([
       Animated.spring(likeAnim, { toValue: 1.4, tension: 80, friction: 4, useNativeDriver: true }),
       Animated.spring(likeAnim, { toValue: 1, tension: 80, friction: 4, useNativeDriver: true }),
     ]).start();
+    try {
+      const { doc, updateDoc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'portfolio', item.id), {
+        likes: likes + (next ? 1 : -1),
+      });
+    } catch (e) { console.error(e); }
   };
+
+  const handleSendComment = async () => {
+    if (!commentText.trim() || !userId) return;
+    setSendingComment(true);
+    try {
+      const { addDoc, collection, serverTimestamp } = await import('firebase/firestore');
+      await addDoc(collection(db, 'portfolioComments'), {
+        portfolioId: item.id,
+        hairdresserId: item.hairdresserId,
+        userId,
+        text: commentText.trim(),
+        createdAt: serverTimestamp(),
+      });
+      setCommentText('');
+    } catch (e) {
+      Alert.alert('Hata', 'Yorum gönderilemedi.');
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const beforeImg = item.beforePhoto || item.beforePhotoUrl || item.beforeImageUrl;
+  const afterImg = item.afterPhoto || item.afterPhotoUrl || item.afterImageUrl || item.imageUrl;
+  const isSingleImage = !!item.imageUrl && !beforeImg && !item.afterPhotoUrl && !item.afterImageUrl;
+  const currentImage = activeTab === 'before' ? beforeImg : afterImg;
 
   return (
     <Modal visible={visible} animationType="none" transparent onRequestClose={onClose}>
@@ -218,69 +284,136 @@ function PortfolioDetailModal({ visible, onClose, item }: {
         <TouchableOpacity style={portDetailStyles.closeBtn} onPress={onClose}>
           <Ionicons name="chevron-down" size={28} color={COLORS.white} />
         </TouchableOpacity>
-        <ScrollView showsVerticalScrollIndicator={false} bounces={false}>
-          <View style={portDetailStyles.photoBox}>
-            <LinearGradient
-              colors={activeTab === 'before' ? ['#1A1C29', '#12141F'] : ['#2A1F3D', '#1A0F2E']}
-              style={portDetailStyles.photoGradient}
-            >
-              <Text style={portDetailStyles.photoEmoji}>
-                {activeTab === 'before' ? item.beforeEmoji : item.afterEmoji}
-              </Text>
-              <View style={portDetailStyles.toggleWrapper}>
-                {['before', 'after'].map((t) => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[portDetailStyles.toggleBtn, activeTab === t && portDetailStyles.toggleActive]}
-                    onPress={() => setActiveTab(t as 'before' | 'after')}
-                  >
-                    <Text style={[portDetailStyles.toggleText, activeTab === t && portDetailStyles.toggleActiveText]}>
-                      {t === 'before' ? 'Önce' : 'Sonra'}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={{ flex: 1 }}
+        >
+          <ScrollView showsVerticalScrollIndicator={false} bounces={false} keyboardShouldPersistTaps="handled">
+            <View style={portDetailStyles.photoBox}>
+              {isSingleImage ? (
+                <Image source={{ uri: item.imageUrl! }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+              ) : (
+                <LinearGradient
+                  colors={activeTab === 'before' ? ['#1A1C29', '#12141F'] : ['#2A1F3D', '#1A0F2E']}
+                  style={portDetailStyles.photoGradient}
+                >
+                  {currentImage ? (
+                    <Image source={{ uri: currentImage }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                  ) : (
+                    <Text style={portDetailStyles.photoEmoji}>
+                      {activeTab === 'before' ? (item.beforeEmoji || '😐') : (item.afterEmoji || '✨')}
                     </Text>
-                  </TouchableOpacity>
+                  )}
+                  <View style={portDetailStyles.toggleWrapper}>
+                    {['before', 'after'].map((t) => (
+                      <TouchableOpacity
+                        key={t}
+                        style={[portDetailStyles.toggleBtn, activeTab === t && portDetailStyles.toggleActive]}
+                        onPress={() => setActiveTab(t as 'before' | 'after')}
+                      >
+                        <Text style={[portDetailStyles.toggleText, activeTab === t && portDetailStyles.toggleActiveText]}>
+                          {t === 'before' ? 'Önce' : 'Sonra'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </LinearGradient>
+              )}
+            </View>
+
+            <View style={portDetailStyles.content}>
+              <View style={portDetailStyles.titleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={portDetailStyles.serviceName}>{item.service}</Text>
+                  {item.colorInfo && <Text style={portDetailStyles.colorInfo}>{item.colorInfo}</Text>}
+                </View>
+                <View style={portDetailStyles.priceBadge}>
+                  <Text style={portDetailStyles.priceText}>₺{item.price}</Text>
+                </View>
+              </View>
+
+              <View style={portDetailStyles.badges}>
+                <View style={portDetailStyles.badge}>
+                  <Ionicons name="time-outline" size={13} color={COLORS.primary} />
+                  <Text style={portDetailStyles.badgeText}>{item.duration} dk</Text>
+                </View>
+                <View style={portDetailStyles.badge}>
+                  <Ionicons name="calendar-outline" size={13} color={COLORS.textMuted} />
+                  <Text style={portDetailStyles.badgeText}>{item.date}</Text>
+                </View>
+                <View style={portDetailStyles.badge}>
+                  <Ionicons name="pricetag-outline" size={13} color={COLORS.textMuted} />
+                  <Text style={portDetailStyles.badgeText}>{item.category}</Text>
+                </View>
+              </View>
+
+              {item.note && (
+                <View style={portDetailStyles.noteBox}>
+                  <Text style={portDetailStyles.noteText}>{item.note}</Text>
+                </View>
+              )}
+
+              {/* Beğeni */}
+              <View style={portDetailStyles.actionsRow}>
+                <TouchableOpacity style={portDetailStyles.actionBtn} onPress={handleLike}>
+                  <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
+                    <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color={isLiked ? '#F87171' : COLORS.textSecondary} />
+                  </Animated.View>
+                  <Text style={portDetailStyles.actionCount}>{likes}</Text>
+                </TouchableOpacity>
+                <View style={portDetailStyles.actionBtn}>
+                  <Ionicons name="chatbubble-outline" size={24} color={COLORS.textSecondary} />
+                  <Text style={portDetailStyles.actionCount}>{comments.length}</Text>
+                </View>
+              </View>
+
+              {/* Yorumlar */}
+              <View style={portDetailStyles.commentsSection}>
+                <Text style={portDetailStyles.commentsTitle}>Yorumlar</Text>
+                {comments.length === 0 && (
+                  <Text style={portDetailStyles.noComments}>Henüz yorum yok. İlk yorumu sen yap!</Text>
+                )}
+                {comments.map((c) => (
+                  <View key={c.id} style={portDetailStyles.commentRow}>
+                    <View style={portDetailStyles.commentAvatar}>
+                      <Ionicons name="person" size={16} color={COLORS.primary} />
+                    </View>
+                    <View style={portDetailStyles.commentContent}>
+                      <Text style={portDetailStyles.commentText}>{c.text}</Text>
+                    </View>
+                  </View>
                 ))}
               </View>
-            </LinearGradient>
-          </View>
-          <View style={portDetailStyles.content}>
-            <View style={portDetailStyles.titleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={portDetailStyles.serviceName}>{item.service}</Text>
-                {item.colorInfo && <Text style={portDetailStyles.colorInfo}>{item.colorInfo}</Text>}
-              </View>
-              <View style={portDetailStyles.priceBadge}>
-                <Text style={portDetailStyles.priceText}>₺{item.price}</Text>
-              </View>
+
+              {/* Yorum yaz */}
+              {userId && (
+                <View style={portDetailStyles.commentInput}>
+                  <TextInput
+                    style={portDetailStyles.commentTextInput}
+                    placeholder="Yorum yaz..."
+                    placeholderTextColor={COLORS.textMuted}
+                    value={commentText}
+                    onChangeText={setCommentText}
+                    multiline
+                    maxLength={300}
+                  />
+                  <TouchableOpacity
+                    style={[portDetailStyles.sendBtn, (!commentText.trim() || sendingComment) && { opacity: 0.4 }]}
+                    onPress={handleSendComment}
+                    disabled={!commentText.trim() || sendingComment}
+                  >
+                    {sendingComment
+                      ? <ActivityIndicator size="small" color={COLORS.white} />
+                      : <Ionicons name="send" size={18} color={COLORS.white} />
+                    }
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              <View style={{ height: 40 }} />
             </View>
-            <View style={portDetailStyles.badges}>
-              <View style={portDetailStyles.badge}>
-                <Ionicons name="time-outline" size={13} color={COLORS.primary} />
-                <Text style={portDetailStyles.badgeText}>{item.duration} dk</Text>
-              </View>
-              <View style={portDetailStyles.badge}>
-                <Ionicons name="calendar-outline" size={13} color={COLORS.textMuted} />
-                <Text style={portDetailStyles.badgeText}>{item.date}</Text>
-              </View>
-              <View style={portDetailStyles.badge}>
-                <Ionicons name="pricetag-outline" size={13} color={COLORS.textMuted} />
-                <Text style={portDetailStyles.badgeText}>{item.category}</Text>
-              </View>
-            </View>
-            {item.note && (
-              <View style={portDetailStyles.noteBox}>
-                <Text style={portDetailStyles.noteText}>{item.note}</Text>
-              </View>
-            )}
-            <View style={portDetailStyles.actionsRow}>
-              <TouchableOpacity style={portDetailStyles.actionBtn} onPress={handleLike}>
-                <Animated.View style={{ transform: [{ scale: likeAnim }] }}>
-                  <Ionicons name={isLiked ? 'heart' : 'heart-outline'} size={26} color={isLiked ? '#F87171' : COLORS.textSecondary} />
-                </Animated.View>
-                <Text style={portDetailStyles.actionCount}>{item.likes + (isLiked ? 1 : 0)}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Animated.View>
     </Modal>
   );
@@ -289,7 +422,7 @@ function PortfolioDetailModal({ visible, onClose, item }: {
 const portDetailStyles = StyleSheet.create({
   container: { flex: 1, position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   closeBtn: { position: 'absolute', top: 56, left: SPACING.lg, zIndex: 10, width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
-  photoBox: { width, height: width * 1.1 },
+  photoBox: { width, height: width * 1.1, backgroundColor: '#090514' },
   photoGradient: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   photoEmoji: { fontSize: 100 },
   toggleWrapper: { position: 'absolute', bottom: SPACING.lg, flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: RADIUS.full, padding: 4 },
@@ -311,15 +444,21 @@ const portDetailStyles = StyleSheet.create({
   actionsRow: { flexDirection: 'row', gap: SPACING.xl, paddingTop: SPACING.sm, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)' },
   actionBtn: { alignItems: 'center', gap: 4 },
   actionCount: { fontSize: FONTS.small, color: COLORS.textMuted },
+  commentsSection: { gap: SPACING.sm },
+  commentsTitle: { fontSize: FONTS.medium, fontWeight: 'bold', color: COLORS.textPrimary },
+  noComments: { fontSize: FONTS.small, color: COLORS.textMuted },
+  commentRow: { flexDirection: 'row', gap: SPACING.sm, alignItems: 'flex-start' },
+  commentAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: COLORS.primary + '22', justifyContent: 'center', alignItems: 'center' },
+  commentContent: { flex: 1, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: RADIUS.lg, padding: SPACING.sm },
+  commentText: { fontSize: FONTS.small, color: COLORS.textSecondary, lineHeight: 18 },
+  commentInput: { flexDirection: 'row', alignItems: 'flex-end', gap: SPACING.sm, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: RADIUS.xl, borderWidth: 1, borderColor: COLORS.border, padding: SPACING.sm },
+  commentTextInput: { flex: 1, color: COLORS.textPrimary, fontSize: FONTS.regular, maxHeight: 80, paddingVertical: 4 },
+  sendBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: COLORS.primary, justifyContent: 'center', alignItems: 'center' },
 });
 
 // ─── RANDEVU MODALI ────────────────────────────────────────
 function AppointmentModal({ visible, onClose, hairdresser, services, availability }: {
-  visible: boolean;
-  onClose: () => void;
-  hairdresser: HairdresserProfile;
-  services: Service[];
-  availability: Record<string, string[]>;
+  visible: boolean; onClose: () => void; hairdresser: HairdresserProfile; services: Service[]; availability: Record<string, string[]>;
 }) {
   const [step, setStep] = useState<'service' | 'datetime' | 'confirm'>('service');
   const [selectedService, setSelectedService] = useState<Service | null>(null);
@@ -387,10 +526,7 @@ function AppointmentModal({ visible, onClose, hairdresser, services, availabilit
           <LinearGradient colors={['#1E1030', '#120A1F']} style={StyleSheet.absoluteFill} />
           <View style={aptStyles.handle} />
           <View style={aptStyles.header}>
-            <TouchableOpacity
-              onPress={() => { if (step === 'datetime') setStep('service'); else if (step === 'confirm') setStep('datetime'); else onClose(); }}
-              style={aptStyles.backBtn}
-            >
+            <TouchableOpacity onPress={() => { if (step === 'datetime') setStep('service'); else if (step === 'confirm') setStep('datetime'); else onClose(); }} style={aptStyles.backBtn}>
               <Ionicons name={step === 'service' ? 'close' : 'arrow-back'} size={22} color={COLORS.textPrimary} />
             </TouchableOpacity>
             <View style={aptStyles.headerCenter}>
@@ -633,79 +769,96 @@ export default function HairdresserPublicProfile() {
   const scrollY = useRef(new Animated.Value(0)).current;
   const headerOpacity = scrollY.interpolate({ inputRange: [0, 120], outputRange: [0, 1], extrapolate: 'clamp' });
 
-  // ─── Firestore'dan veri çek ───
+  // ─── Firestore'dan veri çek (GERÇEK ZAMANLI LİVE DİNLEYİCİ) ───
   useEffect(() => {
     if (!id) return;
 
-    const fetchAll = async () => {
-      try {
-        // 1. Profil
-        const profileDoc = await getDoc(doc(db, 'hairdresserProfiles', id));
-        if (profileDoc.exists()) {
-          setHairdresser({ id: profileDoc.id, ...profileDoc.data() } as HairdresserProfile);
-          // Services profil içinde array olarak tutuluyor
-          // fetchAll içinde profil çekildikten sonra
-          if (profileDoc.data().services) {
-            const rawServices = profileDoc.data().services as any[];
+    setIsLoading(true);
+    const unsubs: (() => void)[] = [];
+
+    try {
+      // 1. Profil ve Hizmetleri Dinle
+      const profileRef = doc(db, 'hairdresserProfiles', id);
+      unsubs.push(onSnapshot(profileRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const profData = docSnap.data();
+          setHairdresser({
+            id: docSnap.id,
+            ...profData,
+            ownerName: profData.ownerName || profData.bio || '',
+            emoji: profData.emoji || '✂️',
+          } as HairdresserProfile);
+
+          if (profData.services) {
+            const rawServices = profData.services as any[];
             setServices(rawServices.map(s => ({
-              id: s.serviceId,        // serviceId → id
-              category: s.category,
-              name: s.name,
-              price: s.price,
-              duration: s.duration,
+              id: s.serviceId || s.id || '',
+              category: s.category || 'Diğer',
+              name: s.name || 'Hizmet',
+              price: s.price || 0,
+              duration: s.duration || 30,
             })));
           }
         }
+        setIsLoading(false);
+      }));
 
-        // 2. Portfolyo
-        const portfolioQuery = query(
-          collection(db, 'portfolioItems'),
-          where('hairdresserId', '==', id),
-          orderBy('date', 'desc')
-        );
-        const portfolioSnap = await getDocs(portfolioQuery);
-        setPortfolio(portfolioSnap.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioItem)));
+      // 2. Portfolyoyu Dinle (Gerçek resimler için)
+      const portfolioQuery = query(
+        collection(db, 'portfolio'),
+        where('hairdresserId', '==', id)
+      );
+      unsubs.push(onSnapshot(portfolioQuery, (snap) => {
+        console.log('PORTFOLIO COUNT:', snap.docs.length);
+        const portItems = snap.docs.map(d => ({ id: d.id, ...d.data() } as PortfolioItem));
+        // Yeniden eskiye sıralama (createdAt alanı yoksa bile patlamaz)
+        portItems.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+        setPortfolio(portItems);
+      }));
 
-        // 3. Yorumlar
-        const reviewsQuery = query(
-          collection(db, 'reviews'),
-          where('hairdresserId', '==', id),
-          orderBy('date', 'desc')
-        );
-        const reviewsSnap = await getDocs(reviewsQuery);
-        setReviews(reviewsSnap.docs.map(d => ({ id: d.id, ...d.data() } as Review)));
+      // 3. Yorumları Dinle
+      const reviewsQuery = query(
+        collection(db, 'reviews'),
+        where('hairdresserId', '==', id)
+      );
+      unsubs.push(onSnapshot(reviewsQuery, (snap) => {
+        setReviews(snap.docs.map(d => ({ id: d.id, ...d.data() } as Review)));
+      }));
 
-        // 4. Müsaitlik
-        const availDoc = await getDoc(doc(db, 'availability', id));
-        if (availDoc.exists()) {
-          const data = availDoc.data();
+      // 4. Müsaitlik Dinle
+      const availRef = doc(db, 'availability', id);
+      unsubs.push(onSnapshot(availRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
           setAvailability(data.availableSlots || {});
         }
-        // 5. Mevcut chat var mı?
-        if (user?.uid) {
-          const chatQuery = query(
-            collection(db, 'chats'),
-            where('customerId', '==', user.uid),
-            where('hairdresserId', '==', id)
-          );
-          const chatSnap = await getDocs(chatQuery);
-          if (!chatSnap.empty) {
-            setExistingChatId(chatSnap.docs[0].id);
-          }
-        }
-        // 6. Takip durumu
-        if (user?.uid) {
-          const followDoc = await getDoc(doc(db, 'follows', `${user.uid}_${id}`));
-          setIsFollowing(followDoc.exists());
-        }
-      } catch (error) {
-        console.error('Profil verisi çekilirken hata:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
+      }));
 
-    fetchAll();
+      // 5. Mevcut chat kontrolü
+      const chatQuery = query(
+        collection(db, 'chats'),
+        where('customerId', '==', user?.uid || ''),
+        where('hairdresserId', '==', id)
+      );
+      getDocs(chatQuery).then(chatSnap => {
+        if (!chatSnap.empty) {
+          setExistingChatId(chatSnap.docs[0].id);
+        }
+      });
+
+      // 6. Takip durumu Dinle
+      if (user?.uid) {
+        const followRef = doc(db, 'follows', `${user.uid}_${id}`);
+        unsubs.push(onSnapshot(followRef, (docSnap) => {
+          setIsFollowing(docSnap.exists());
+        }));
+      }
+
+    } catch (error) {
+      console.error('Profil dinlenirken kritik hata:', error);
+    }
+
+    return () => unsubs.forEach(u => u());
   }, [id, user?.uid]);
 
   if (isLoading) {
@@ -747,7 +900,6 @@ export default function HairdresserPublicProfile() {
       );
     }
   };
-
   return (
     <View style={styles.container}>
       <LinearGradient colors={['#1A0533', '#0F0A1E', '#0D1B3E']} start={{ x: 0.2, y: 0 }} end={{ x: 0.8, y: 1 }} style={StyleSheet.absoluteFill} />
@@ -769,7 +921,6 @@ export default function HairdresserPublicProfile() {
         scrollEventThrottle={16}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Geri butonu */}
         <TouchableOpacity onPress={() => router.back()} style={styles.topBackBtn}>
           <Ionicons name="arrow-back" size={22} color={COLORS.textPrimary} />
         </TouchableOpacity>
@@ -777,9 +928,14 @@ export default function HairdresserPublicProfile() {
         {/* ── PROFİL BAŞLIĞI ── */}
         <View style={styles.profileHeader}>
           <View style={styles.avatarWrapper}>
-            <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
-              <Text style={styles.avatarEmoji}>{hairdresser.emoji || '✂️'}</Text>
-            </LinearGradient>
+            {/* GERÇEK PROFİL FOTOĞRAFI BAĞLANDI */}
+            {(hairdresser.profileImageUrl || (hairdresser as any).avatarUri) ? (
+              <Image source={{ uri: hairdresser.profileImageUrl || (hairdresser as any).avatarUri }} style={styles.avatar} resizeMode="cover" />
+            ) : (
+              <LinearGradient colors={[COLORS.primary, COLORS.primaryDark]} style={styles.avatar}>
+                <Text style={styles.avatarEmoji}>{hairdresser.emoji || '✂️'}</Text>
+              </LinearGradient>
+            )}
             {hairdresser.isOnline && <View style={styles.onlineDot} />}
           </View>
 
@@ -790,12 +946,11 @@ export default function HairdresserPublicProfile() {
             <Text style={styles.location}>{hairdresser.district}, {hairdresser.city}</Text>
           </View>
 
-          {/* İstatistikler */}
           <View style={styles.statsRow}>
             {[
-              { value: hairdresser.totalJobs, label: 'İş' },
-              { value: hairdresser.averageRating, label: 'Puan', isRating: true },
-              { value: hairdresser.followersCount, label: 'Takipçi' },
+              { value: hairdresser.totalJobs || 0, label: 'İş' },
+              { value: hairdresser.averageRating || 5.0, label: 'Puan', isRating: true },
+              { value: hairdresser.followersCount || 0, label: 'Takipçi' },
               { value: hairdresser.experience ? `${hairdresser.experience}y` : '-', label: 'Deneyim' },
             ].map((stat, i, arr) => (
               <View key={stat.label} style={{ flexDirection: 'row', flex: 1 }}>
@@ -819,7 +974,6 @@ export default function HairdresserPublicProfile() {
             <Text style={styles.description}>{hairdresser.description}</Text>
           ) : null}
 
-          {/* Uzmanlık etiketleri */}
           {hairdresser.specializations?.length > 0 && (
             <View style={styles.specTags}>
               {hairdresser.specializations.map((spec) => (
@@ -830,40 +984,23 @@ export default function HairdresserPublicProfile() {
             </View>
           )}
 
-          {/* Aksiyon butonları */}
           <View style={styles.actionButtons}>
             <TouchableOpacity style={[styles.followBtn, isFollowing && styles.followingBtn]}
               onPress={async () => {
                 if (!user?.uid) return;
                 const followId = `${user.uid}_${id}`;
                 try {
+                  const { deleteDoc, setDoc, doc: firestoreDoc, updateDoc, increment } = await import('firebase/firestore');
                   if (isFollowing) {
-                    // Takibi bırak
-                    const { deleteDoc, doc: firestoreDoc, updateDoc, increment } = await import('firebase/firestore');
                     await deleteDoc(firestoreDoc(db, 'follows', followId));
-                    await import('firebase/firestore').then(({ updateDoc, doc: firestoreDoc, increment }) =>
-                      updateDoc(firestoreDoc(db, 'hairdresserProfiles', id), { followersCount: increment(-1) })
-                    );
-                    setIsFollowing(false);
-                    setHairdresser(prev => prev ? { ...prev, followersCount: prev.followersCount - 1 } : prev);
+                    await updateDoc(firestoreDoc(db, 'hairdresserProfiles', id), { followersCount: increment(-1) });
                   } else {
-                    // Takip et
-                    const { setDoc, doc: firestoreDoc, updateDoc, increment } = await import('firebase/firestore');
                     await setDoc(firestoreDoc(db, 'follows', followId), {
-                      userId: user.uid,
-                      hairdresserId: id,
-                      salonName: hairdresser.salonName,
-                      emoji: hairdresser.emoji || '✂️',
-                      isOnline: hairdresser.isOnline,
-                      createdAt: Date.now(),
+                      userId: user.uid, hairdresserId: id, salonName: hairdresser.salonName, emoji: hairdresser.emoji || '✂️', isOnline: hairdresser.isOnline, createdAt: Date.now(),
                     });
                     await updateDoc(firestoreDoc(db, 'hairdresserProfiles', id), { followersCount: increment(1) });
-                    setIsFollowing(true);
-                    setHairdresser(prev => prev ? { ...prev, followersCount: prev.followersCount + 1 } : prev);
                   }
-                } catch (e) {
-                  Alert.alert('Hata', 'İşlem gerçekleştirilemedi.');
-                }
+                } catch (e) { Alert.alert('Hata', 'İşlem gerçekleştirilemedi.'); }
               }}>
               <Ionicons name={isFollowing ? 'checkmark' : 'person-add-outline'} size={14} color={isFollowing ? COLORS.primary : COLORS.white} />
               <Text style={[styles.followBtnText, isFollowing && styles.followingBtnText]}>{isFollowing ? 'Takip ' : 'Takip Et'}</Text>
@@ -882,7 +1019,6 @@ export default function HairdresserPublicProfile() {
             </TouchableOpacity>
           </View>
 
-          {/* Detaylı puanlar */}
           {hairdresser.ratings && (
             <View style={styles.ratingDetails}>
               {[
@@ -903,7 +1039,6 @@ export default function HairdresserPublicProfile() {
           )}
         </View>
 
-        {/* ── SEKMELER ── */}
         <View style={styles.tabBar}>
           {[
             { key: 'portfolio', label: 'Portfolyo', icon: 'grid-outline' },
@@ -917,7 +1052,6 @@ export default function HairdresserPublicProfile() {
           ))}
         </View>
 
-        {/* ── PORTFOLYo ── */}
         {activeTab === 'portfolio' && (
           portfolio.length === 0 ? (
             <View style={styles.emptyTab}>
@@ -933,7 +1067,6 @@ export default function HairdresserPublicProfile() {
           )
         )}
 
-        {/* ── HİZMETLER ── */}
         {activeTab === 'services' && (
           <View style={styles.servicesContainer}>
             {services.length === 0 ? (
@@ -967,7 +1100,6 @@ export default function HairdresserPublicProfile() {
               </>
             )}
 
-            {/* Çalışma saatleri */}
             {hairdresser.workingHours && (
               <>
                 <Text style={styles.workingHoursTitle}>Çalışma Saatleri</Text>
@@ -986,7 +1118,6 @@ export default function HairdresserPublicProfile() {
           </View>
         )}
 
-        {/* ── YORUMLAR ── */}
         {activeTab === 'reviews' && (
           <View style={styles.reviewsContainer}>
             {reviews.length === 0 ? (
@@ -1018,24 +1149,17 @@ export default function HairdresserPublicProfile() {
         )}
       </Animated.ScrollView>
 
-      <AppointmentModal
-        visible={showAppointment}
-        onClose={() => setShowAppointment(false)}
-        hairdresser={hairdresser}
-        services={services}
-        availability={availability}
-      />
-
+      <AppointmentModal visible={showAppointment} onClose={() => setShowAppointment(false)} hairdresser={hairdresser} services={services} availability={availability} />
       <PortfolioDetailModal
         visible={selectedPortfolio !== null}
         onClose={() => setSelectedPortfolio(null)}
         item={selectedPortfolio}
+        userId={user?.uid}
       />
     </View>
   );
 }
 
-// ─── STİLLER ───────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   portfolioGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: SPACING.lg, justifyContent: 'space-between', columnGap: 12, rowGap: 16, paddingBottom: SPACING.xl },
@@ -1047,7 +1171,7 @@ const styles = StyleSheet.create({
   iconBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.1)', justifyContent: 'center', alignItems: 'center' },
   profileHeader: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, alignItems: 'center' },
   avatarWrapper: { position: 'relative', marginBottom: SPACING.md },
-  avatar: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.primary },
+  avatar: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: COLORS.primary, overflow: 'hidden' },
   avatarEmoji: { fontSize: 48 },
   onlineDot: { position: 'absolute', bottom: 4, right: 4, width: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.success, borderWidth: 2, borderColor: COLORS.background },
   salonName: { fontSize: FONTS.xlarge, fontWeight: 'bold', color: COLORS.textPrimary, textAlign: 'center', marginBottom: 3 },

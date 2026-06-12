@@ -121,6 +121,21 @@ export default function HairdresserChatScreen() {
         lastMessageTime: serverTimestamp(),
         unreadByCustomer: true,
       });
+      {/*
+
+      // Müşteriye bildirim gönder
+      if (chatInfo?.customerId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: chatInfo.customerId,
+          type: 'message',
+          title: 'Yeni Mesaj 💬',
+          body: text.length > 50 ? text.substring(0, 50) + '...' : text,
+          relatedId: chatId,
+          isRead: false,
+          createdAt: serverTimestamp(),
+        });
+      }
+      */}
     } catch (e) {
       Alert.alert('Hata', 'Mesaj gönderilemedi.');
     }

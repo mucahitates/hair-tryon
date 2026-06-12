@@ -346,9 +346,23 @@ export default function AIHairScreen() {
   // ── İŞ İLANINA DÖNÜŞTÜR ──────────────────────────────────
   // AI sonucunu iş ilanı oluşturma ekranına taşır
   // İşlerim ekranına navigate eder, result parametresi ile
+  // ── İŞ İLANINA DÖNÜŞTÜR ──────────────────────────────────
   const handleCreateJob = () => {
-    // TODO: router.push ile işlerim ekranına git, AI sonucunu parametre olarak geçir
-    Alert.alert('Bilgi', 'İş ilanı oluşturma yakında aktif olacak!');
+    if (!resultImage || !photo) {
+      Alert.alert('Hata', 'Fotoğraflar eksik.');
+      return;
+    }
+
+    // router.push ile /my-jobs sayfasına gidiyoruz ve AI sonuçlarını URL parametresi olarak taşıyoruz
+    router.push({
+      pathname: '/(customer)/my-jobs',
+      params: {
+        autoCreate: 'true',
+        aiBeforePhoto: photo,
+        aiAfterPhoto: resultImage,
+        aiService: selectedStyle?.name || '',
+      }
+    } as any);
   };
 
   // ── GERİ GİT ─────────────────────────────────────────────
